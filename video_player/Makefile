@@ -9,6 +9,5 @@ main: $(SOURCE_FILES)
 	mkdir -p bin/ && \
 	gcc $(CFLAGS) $(LIBS) $(SOURCE_FILES) -o bin/$(OUTPUT)
 
-
 clean:
-	rm $(OUTPUT)
+	rm bin/$(OUTPUT)

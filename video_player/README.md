@@ -1,7 +1,7 @@
-## Prerequisites
+# Prerequisites
 Make sure you have the following installed:
 
-### gcc
+## gcc
 - [WSL on windows](https://learn.microsoft.com/en-us/windows/wsl/install)
 - MacOS: `brew install gcc`
 - Linux
@@ -18,7 +18,7 @@ gcc version 12.2.0 (GCC)
 
 Version doesn't matter, as long as it's somewhat recent like > `10.0.0`
 
-### make
+## make
 - Use WSL on Windows
 - MacOS: `brew install make`
 - Linux
@@ -31,6 +31,36 @@ $ make -v
 GNU Make 4.3
 ...
 ```
+Again version doesn't matter, as long as it's somewhat recent
 
 
 <!-- TODO: Cairo installation -->
+
+
+# Compiling and running the code
+
+We are using make for this C project. So naturally, we call `make` to compile the source
+code into a binary:
+
+```bash
+# -- COMPILE --
+$ make main
+$ make       # Equivalent: this defaults to first target, which is main
+
+# -- RUN --
+$ bin/main.out
+
+```
+
+# Clean build
+
+If for some reason there's a problem with the compiled binary, call `make clean` before
+building the code:
+
+```bash
+$ make clean  # Cleans bin/
+$ make main
+```
+
+
+
