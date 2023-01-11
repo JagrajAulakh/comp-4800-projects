@@ -53,3 +53,4 @@ dkms.conf
 
 .cache/
 compile_commands.json
+.ccls-cache/

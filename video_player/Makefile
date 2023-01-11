@@ -1,9 +1,8 @@
-
 SOURCE_FILES = ./main.c
 OUTPUT=main.out
 
-CFLAGS=`pkg-config --cflags cairo gtk+-3.0`
-LIBS=`pkg-config --libs cairo gtk+-3.0`
+CFLAGS=`pkg-config --cflags cairo gtk4`
+LIBS=`pkg-config --libs cairo gtk4`
 
 main: $(SOURCE_FILES)
 	mkdir -p bin/ && \
