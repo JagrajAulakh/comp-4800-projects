@@ -6,7 +6,8 @@ CFLAGS=`pkg-config --cflags cairo`
 LIBS=`pkg-config --libs cairo`
 
 main: $(SOURCE_FILES)
-	gcc $(CFLAGS) $(LIBS) $(SOURCE_FILES) -o $(OUTPUT)
+	mkdir -p bin/ && \
+	gcc $(CFLAGS) $(LIBS) $(SOURCE_FILES) -o bin/$(OUTPUT)
 
 
 clean:
