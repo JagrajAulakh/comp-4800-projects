@@ -6,8 +6,8 @@ find_package(PkgConfig)
 pkg_check_modules(GTK REQUIRED gtk4)
 pkg_check_modules(CAIRO REQUIRED cairo)
 
-include_directories(${GTK_INCLUDE_DIRS})
-link_directories(${GTK_LIBRARY_DIRS})
+include_directories(${GTK_INCLUDE_DIRS} ${CAIRO_INCLUDE_DIRS})
+link_directories(${GTK_LIBRARY_DIRS} ${CAIRO_LIBRARY_DIRS})
 
 set(CMAKE_C_STANDARD 99)
 
