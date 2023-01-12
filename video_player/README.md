@@ -34,6 +34,12 @@ GNU Make 4.3
 Again version doesn't matter, as long as it's somewhat recent
 
 
+## GTK 4
+- Use whatever distro you have on WSL
+- Arch based: `pacman -S gtk4`
+- Debian based: `apt install libgtk-4-dev`
+
+
 <!-- TODO: Cairo installation -->
 
 
