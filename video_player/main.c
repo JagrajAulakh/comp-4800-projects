@@ -10,7 +10,7 @@ void setMargin(GtkWidget *widget, int margin) {
 	gtk_widget_set_margin_bottom(widget, margin);
 }
 
-void spawnInfoWindow(GtkApplication *app, const char *message) {
+GtkWidget *spawnInfoWindow(GtkApplication *app, const char *message) {
 	GtkWidget *infoWindow, *mainBox, *buttonBox, *infoMessage, *okButton;
 	infoWindow = gtk_application_window_new(app);
 	gtk_window_set_title(GTK_WINDOW(infoWindow), "Info window");
@@ -27,7 +27,8 @@ void spawnInfoWindow(GtkApplication *app, const char *message) {
 	infoMessage = gtk_label_new(message);
 
 	okButton = gtk_button_new_with_label("OK");
-	g_signal_connect_swapped(okButton, "clicked", G_CALLBACK(gtk_window_destroy), infoWindow);
+	g_signal_connect_swapped(okButton, "clicked",
+	                         G_CALLBACK(gtk_window_destroy), infoWindow);
 
 	gtk_window_set_child(GTK_WINDOW(infoWindow), mainBox);
 	gtk_box_append(GTK_BOX(mainBox), infoMessage);
@@ -35,11 +36,11 @@ void spawnInfoWindow(GtkApplication *app, const char *message) {
 	gtk_box_append(GTK_BOX(buttonBox), okButton);
 
 	gtk_widget_show(infoWindow);
+	return infoWindow;
 }
 
 // Button clicked callback function
 void click_callback(GtkApplication *app, GtkWidget *widget) {
-
 	switch (dropdown_index) {
 		case 0:
 			spawnInfoWindow(app, "This is an info box");
@@ -53,7 +54,8 @@ void dropdown_callback(GtkWidget *widget, gpointer data) {
 }
 
 void activate(GtkApplication *app, gpointer user_data) {
-	GtkWidget *window, *button, *main_box, *dropdown_box, *dropdown_label, *dropdown;
+	GtkWidget *window, *button, *main_box, *dropdown_box, *dropdown_label,
+	    *dropdown;
 
 	// Make main application window
 	window = gtk_application_window_new(app);
@@ -73,7 +75,8 @@ void activate(GtkApplication *app, gpointer user_data) {
 	gtk_widget_set_valign(main_box, GTK_ALIGN_CENTER);
 
 	// Define callback function for button click
-	g_signal_connect_swapped(button, "clicked", G_CALLBACK(click_callback), G_APPLICATION(app));
+	g_signal_connect_swapped(button, "clicked", G_CALLBACK(click_callback),
+	                         G_APPLICATION(app));
 	// Call function everytime user changes dropdown value
 	g_signal_connect(dropdown, "notify::selected-item",
 	                 G_CALLBACK(dropdown_callback), NULL);
