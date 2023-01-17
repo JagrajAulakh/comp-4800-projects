@@ -10,10 +10,19 @@ void setMargin(GtkWidget *widget, int margin) {
 	gtk_widget_set_margin_bottom(widget, margin);
 }
 
-GtkWidget *spawnInfoWindow(GtkApplication *app, const char *message) {
+void setWidgetCss(GtkWidget *widget, const char *css) {
+	GtkCssProvider *provider = gtk_css_provider_new();
+	const char *data = css;
+	gtk_css_provider_load_from_data(provider, data, -1);
+	GdkDisplay *displej = gtk_widget_get_display(GTK_WIDGET(widget));
+	gtk_style_context_add_provider_for_display(
+	    displej, GTK_STYLE_PROVIDER(provider),
+	    GTK_STYLE_PROVIDER_PRIORITY_USER);
+}
+
+GtkWidget *makeInfoWindow(GtkApplication *app, const char *message) {
 	GtkWidget *infoWindow, *mainBox, *buttonBox, *infoMessage, *okButton;
 	infoWindow = gtk_application_window_new(app);
-	gtk_window_set_title(GTK_WINDOW(infoWindow), "Info window");
 
 	mainBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
 	gtk_widget_set_valign(mainBox, GTK_ALIGN_CENTER);
@@ -35,15 +44,72 @@ GtkWidget *spawnInfoWindow(GtkApplication *app, const char *message) {
 	gtk_box_append(GTK_BOX(mainBox), buttonBox);
 	gtk_box_append(GTK_BOX(buttonBox), okButton);
 
-	gtk_widget_show(infoWindow);
 	return infoWindow;
+}
+
+void spawnInfoWindow(GtkApplication *app, const char *message) {
+	GtkWidget *infoWindow = makeInfoWindow(app, message);
+	gtk_window_set_title(GTK_WINDOW(infoWindow), "Info window");
+	gtk_widget_show(infoWindow);
+}
+
+void spawnWarningWindow(GtkApplication *app, const char *message) {
+	GtkWidget *warningWindow = makeInfoWindow(app, message);
+	GtkWidget *child = gtk_window_get_child(GTK_WINDOW(warningWindow));
+
+	gtk_window_set_title(GTK_WINDOW(warningWindow), "Warning window");
+
+	gtk_widget_set_name(warningWindow, "warningWindow");
+
+	setWidgetCss(warningWindow, "window#warningWindow {background: red;}");
+	gtk_widget_show(warningWindow);
+}
+
+void randomBackground(GtkWidget *widget, GtkWidget *window) {
+	int r = rand() % 255, g = rand() % 255, b = rand() % 255;
+	char cssProp[100];
+	sprintf(cssProp, "window#parent {background: rgb(%d, %d, %d);}", r, g,
+	        b);
+	setWidgetCss(window, cssProp);
+}
+
+GtkWidget *makeColorChangeWindow(GtkApplication *app) {
+	GtkWindow *parentWindow = gtk_application_get_active_window(app);
+
+	printf("Parent window has title: %s\n",
+	       gtk_window_get_title(GTK_WINDOW(parentWindow)));
+
+	GtkWidget *window, *button, *box;
+	window = gtk_application_window_new(app);
+	box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+	setMargin(box, 20);
+
+	button = gtk_button_new_with_label("Random color");
+
+	g_signal_connect(button, "clicked", G_CALLBACK(randomBackground), parentWindow);
+
+	gtk_window_set_child(GTK_WINDOW(window), box);
+	gtk_box_append(GTK_BOX(box), button);
+
+	return window;
+}
+
+void spawnColorWindow(GtkApplication *app) {
+	GtkWidget *window = makeColorChangeWindow(app);
+	gtk_widget_show(window);
 }
 
 // Button clicked callback function
 void click_callback(GtkApplication *app, GtkWidget *widget) {
 	switch (dropdown_index) {
 		case 0:
-			spawnInfoWindow(app, "This is an info box");
+			spawnInfoWindow(app, "This is an info window");
+			break;
+		case 1:
+			spawnWarningWindow(app, "WARNING: You a bitch");
+			break;
+		case 2:
+			spawnColorWindow(app);
 			break;
 	}
 }
@@ -59,6 +125,7 @@ void activate(GtkApplication *app, gpointer user_data) {
 
 	// Make main application window
 	window = gtk_application_window_new(app);
+	gtk_widget_set_name(window, "parent");
 	// Make a button with text
 	button = gtk_button_new_with_label("Submit");
 	// Make a box that will hold the button
@@ -100,6 +167,8 @@ void activate(GtkApplication *app, gpointer user_data) {
 }
 
 int main(int argc, char *argv[]) {
+	srand(time(NULL));
+
 	GtkApplication *app;
 	int status;
 
