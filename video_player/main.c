@@ -81,6 +81,8 @@ GtkWidget *makeColorChangeWindow(GtkApplication *app) {
 
 	GtkWidget *window, *button, *box;
 	window = gtk_application_window_new(app);
+	gtk_window_set_title(GTK_WINDOW(window), "Random Color");
+
 	box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	setMargin(box, 20);
 
@@ -106,7 +108,7 @@ void click_callback(GtkApplication *app, GtkWidget *widget) {
 			spawnInfoWindow(app, "This is an info window");
 			break;
 		case 1:
-			spawnWarningWindow(app, "WARNING: You a bitch");
+			spawnWarningWindow(app, "WARNING: This is a serious warning!");
 			break;
 		case 2:
 			spawnColorWindow(app);
