@@ -18,6 +18,20 @@ void draw(GtkDrawingArea *canvas, cairo_t *cr, int width, int height,
 	cairo_paint(cr);
 }
 
+
+GtkWidget *make_toolbar(GtkWidget *parent) {
+	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+
+	gtk_widget_set_halign(GTK_WIDGET(box), GTK_ALIGN_START);
+	gtk_widget_set_valign(GTK_WIDGET(box), GTK_ALIGN_CENTER);
+
+	GtkWidget *openButton = gtk_button_new_with_label("Open");
+
+	gtk_box_append(GTK_BOX(box), openButton);
+
+	return box;
+}
+
 void activate(GtkApplication *app, gpointer user_data) {
 	GtkWidget *window, *box, *canvas;
 
@@ -32,6 +46,9 @@ void activate(GtkApplication *app, gpointer user_data) {
 	gtk_widget_set_valign(box, GTK_ALIGN_CENTER);
 	gtk_window_set_child(GTK_WINDOW(window), box);
 
+	// ------- TOOLBAR -------
+	GtkWidget *toolbar = make_toolbar(window);
+	gtk_box_append(GTK_BOX(box), toolbar);
 
 	// ------- CANVAS -------
 	gtk_widget_set_size_request(canvas, 800, 600);
