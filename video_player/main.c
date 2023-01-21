@@ -18,6 +18,31 @@ void draw(GtkDrawingArea *canvas, cairo_t *cr, int width, int height,
 	cairo_paint(cr);
 }
 
+void open_dialog_response(GtkNativeDialog *dialog, int response) {
+	if (response == GTK_RESPONSE_ACCEPT) {
+		char *path = g_file_get_path(
+		    gtk_file_chooser_get_file(GTK_FILE_CHOOSER(dialog)));
+		printf("Response %d: accepted, got path %s\n", response, path);
+	} else if (response == GTK_RESPONSE_CANCEL) {
+		printf("Response %d: cancelled\n", response);
+	}
+}
+
+void open_clicked(GtkWidget *button, GtkWindow *parent) {
+	GtkFileChooserNative *dialog = gtk_file_chooser_native_new(
+	    "Open picture", GTK_WINDOW(parent), GTK_FILE_CHOOSER_ACTION_OPEN,
+	    "Open", "Cancel");
+
+	GtkFileFilter *png_filter = gtk_file_filter_new();
+	gtk_file_filter_add_pattern(png_filter, "*.png");
+	gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(dialog), png_filter);
+
+	gtk_native_dialog_show(GTK_NATIVE_DIALOG(dialog));
+
+
+	g_signal_connect(dialog, "response", G_CALLBACK(open_dialog_response),
+	                 NULL);
+}
 
 GtkWidget *make_toolbar(GtkWidget *parent) {
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
@@ -26,6 +51,9 @@ GtkWidget *make_toolbar(GtkWidget *parent) {
 	gtk_widget_set_valign(GTK_WIDGET(box), GTK_ALIGN_CENTER);
 
 	GtkWidget *openButton = gtk_button_new_with_label("Open");
+
+	g_signal_connect(openButton, "clicked", G_CALLBACK(open_clicked),
+	                 parent);
 
 	gtk_box_append(GTK_BOX(box), openButton);
 
