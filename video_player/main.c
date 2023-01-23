@@ -2,9 +2,9 @@
 #include <stdio.h>
 
 static int pi = 0;
-static int brush_size = 4;
+static int brush_size = 1;
 
-static int points[100][2];
+static int points[100][3];
 
 void draw(GtkDrawingArea *canvas, cairo_t *cr, int width, int height,
           gpointer data) {
@@ -24,7 +24,8 @@ void draw(GtkDrawingArea *canvas, cairo_t *cr, int width, int height,
 
 	for (int i = 0; i < pi; i++) {
 		GdkRectangle drawRect;
-		int cx = points[i][0], cy = points[i][1];
+		int cx = points[i][0], cy = points[i][1], brush_size = points[i][2];
+
 		drawRect.x = cx - brush_size;
 		drawRect.y = cy - brush_size;
 		drawRect.width = brush_size*2;
@@ -61,10 +62,16 @@ void open_clicked(GtkWidget *button, GtkWindow *parent) {
 	                 NULL);
 }
 
+void brush_spin_button_change(GtkSpinButton *spin, gpointer data) {
+	int val = gtk_spin_button_get_value_as_int(spin);
+	brush_size = val;
+}
+
 void canvas_clicked(GtkGestureClick *gesture, int n, double x, double y,
                     GtkWidget *canvas) {
 	points[pi][0] = (int)x;
 	points[pi][1] = (int)y;
+	points[pi][2] = brush_size;
 	pi++;
 	gtk_widget_queue_draw(canvas);
 	printf("added %.2f %.2f to list\n", x, y);
@@ -77,11 +84,15 @@ GtkWidget *make_toolbar(GtkWidget *parent) {
 	gtk_widget_set_valign(GTK_WIDGET(box), GTK_ALIGN_CENTER);
 
 	GtkWidget *openButton = gtk_button_new_with_label("Open");
+	GtkWidget *brushSizeSpinButton = gtk_spin_button_new_with_range(1, 20, 1);
+	gtk_spin_button_set_digits(GTK_SPIN_BUTTON(brushSizeSpinButton), 0);
 
 	g_signal_connect(openButton, "clicked", G_CALLBACK(open_clicked),
 	                 parent);
+	g_signal_connect(brushSizeSpinButton, "value-changed", G_CALLBACK(brush_spin_button_change), NULL);
 
 	gtk_box_append(GTK_BOX(box), openButton);
+	gtk_box_append(GTK_BOX(box), brushSizeSpinButton);
 
 	return box;
 }
