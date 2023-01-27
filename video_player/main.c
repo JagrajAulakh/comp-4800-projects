@@ -1,10 +1,15 @@
 #include <gtk/gtk.h>
+#include <math.h>
 #include <stdio.h>
 
+// "Points index", not Math.PI lmao
 static int pi = 0;
+static int points[100][3];
+
 static int brush_size = 1;
 
-static int points[100][3];
+static cairo_surface_t *loaded_image = NULL;
+static GtkWidget *canvas = NULL;
 
 void draw(GtkDrawingArea *canvas, cairo_t *cr, int width, int height,
           gpointer data) {
@@ -14,27 +19,36 @@ void draw(GtkDrawingArea *canvas, cairo_t *cr, int width, int height,
 	// think)
 	context = gtk_widget_get_style_context(GTK_WIDGET(canvas));
 
-	cairo_surface_t *demo_image =
-	    cairo_image_surface_create_from_png("./demo.png");
-	int demo_width = cairo_image_surface_get_width(demo_image),
-	    demo_height = cairo_image_surface_get_height(demo_image);
+	if (loaded_image != NULL) {
+		int image_width = cairo_image_surface_get_width(loaded_image),
+		    image_height = cairo_image_surface_get_height(loaded_image);
 
-	cairo_set_source_surface(cr, demo_image, 0, 0);
-	cairo_paint(cr);
+		cairo_set_source_surface(cr, loaded_image, 0, 0);
+		cairo_paint(cr);
 
-	for (int i = 0; i < pi; i++) {
-		GdkRectangle drawRect;
-		int cx = points[i][0], cy = points[i][1], brush_size = points[i][2];
+		for (int i = 0; i < pi; i++) {
+			GdkRectangle drawRect;
+			int cx = points[i][0], cy = points[i][1],
+			    brush_size = points[i][2];
 
-		drawRect.x = cx - brush_size;
-		drawRect.y = cy - brush_size;
-		drawRect.width = brush_size*2;
-		drawRect.height = brush_size*2;
+			drawRect.x = cx - brush_size;
+			drawRect.y = cy - brush_size;
+			drawRect.width = brush_size * 2;
+			drawRect.height = brush_size * 2;
 
-		cairo_set_source_rgb(cr, 1, 0, 1);
-		gdk_cairo_rectangle(cr, &drawRect);
-		cairo_fill(cr);
+			cairo_set_source_rgb(cr, 1, 0, 1);
+			// gdk_cairo_rectangle(cr, &drawRect);
+			cairo_arc(cr, cx, cy, brush_size, 0, 2 * M_PI);
+			cairo_fill(cr);
+		}
 	}
+}
+
+void load_image(const char *path) {
+	loaded_image = cairo_image_surface_create_from_png(path);
+	gtk_widget_set_size_request(
+	    GTK_WIDGET(canvas), cairo_image_surface_get_width(loaded_image),
+	    cairo_image_surface_get_height(loaded_image));
 }
 
 void open_dialog_response(GtkNativeDialog *dialog, int response) {
@@ -42,6 +56,8 @@ void open_dialog_response(GtkNativeDialog *dialog, int response) {
 		char *path = g_file_get_path(
 		    gtk_file_chooser_get_file(GTK_FILE_CHOOSER(dialog)));
 		printf("Response %d: accepted, got path %s\n", response, path);
+		load_image(path);
+		gtk_widget_queue_draw(canvas);
 	} else if (response == GTK_RESPONSE_CANCEL) {
 		printf("Response %d: cancelled\n", response);
 	}
@@ -74,7 +90,6 @@ void canvas_clicked(GtkGestureClick *gesture, int n, double x, double y,
 	points[pi][2] = brush_size;
 	pi++;
 	gtk_widget_queue_draw(canvas);
-	printf("added %.2f %.2f to list\n", x, y);
 }
 
 GtkWidget *make_toolbar(GtkWidget *parent) {
@@ -84,12 +99,14 @@ GtkWidget *make_toolbar(GtkWidget *parent) {
 	gtk_widget_set_valign(GTK_WIDGET(box), GTK_ALIGN_CENTER);
 
 	GtkWidget *openButton = gtk_button_new_with_label("Open");
-	GtkWidget *brushSizeSpinButton = gtk_spin_button_new_with_range(1, 20, 1);
+	GtkWidget *brushSizeSpinButton =
+	    gtk_spin_button_new_with_range(1, 20, 1);
 	gtk_spin_button_set_digits(GTK_SPIN_BUTTON(brushSizeSpinButton), 0);
 
 	g_signal_connect(openButton, "clicked", G_CALLBACK(open_clicked),
 	                 parent);
-	g_signal_connect(brushSizeSpinButton, "value-changed", G_CALLBACK(brush_spin_button_change), NULL);
+	g_signal_connect(brushSizeSpinButton, "value-changed",
+	                 G_CALLBACK(brush_spin_button_change), NULL);
 
 	gtk_box_append(GTK_BOX(box), openButton);
 	gtk_box_append(GTK_BOX(box), brushSizeSpinButton);
@@ -98,7 +115,7 @@ GtkWidget *make_toolbar(GtkWidget *parent) {
 }
 
 void activate(GtkApplication *app, gpointer user_data) {
-	GtkWidget *window, *box, *canvas;
+	GtkWidget *window, *box;
 
 	window = gtk_application_window_new(app);
 	box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -116,10 +133,10 @@ void activate(GtkApplication *app, gpointer user_data) {
 	gtk_box_append(GTK_BOX(box), toolbar);
 
 	// ------- CANVAS -------
-	gtk_widget_set_size_request(canvas, 800, 600);
 	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(canvas), draw, NULL,
 	                               NULL);
 	gtk_box_append(GTK_BOX(box), canvas);
+	load_image("./demo.png");
 
 	// ------- MOUSE GESTURE -------
 	GtkGesture *clickGesture = gtk_gesture_click_new();
