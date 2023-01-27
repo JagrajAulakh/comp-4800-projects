@@ -4,12 +4,16 @@
 
 // "Points index", not Math.PI lmao
 static int pi = 0;
+static int pi_max = 0;
 static int points[100][3];
 
 static int brush_size = 1;
 
 static cairo_surface_t *loaded_image = NULL;
 static GtkWidget *canvas = NULL;
+
+enum { CLICK_OPERATION_GET_COLOR, CLICK_OPERATION_PAINT };
+static int click_operation = CLICK_OPERATION_GET_COLOR;
 
 void draw(GtkDrawingArea *canvas, cairo_t *cr, int width, int height,
           gpointer data) {
@@ -27,17 +31,10 @@ void draw(GtkDrawingArea *canvas, cairo_t *cr, int width, int height,
 		cairo_paint(cr);
 
 		for (int i = 0; i < pi; i++) {
-			GdkRectangle drawRect;
 			int cx = points[i][0], cy = points[i][1],
 			    brush_size = points[i][2];
 
-			drawRect.x = cx - brush_size;
-			drawRect.y = cy - brush_size;
-			drawRect.width = brush_size * 2;
-			drawRect.height = brush_size * 2;
-
 			cairo_set_source_rgb(cr, 1, 0, 1);
-			// gdk_cairo_rectangle(cr, &drawRect);
 			cairo_arc(cr, cx, cy, brush_size, 0, 2 * M_PI);
 			cairo_fill(cr);
 		}
@@ -78,6 +75,19 @@ void open_clicked(GtkWidget *button, GtkWindow *parent) {
 	                 NULL);
 }
 
+void save_clicked(GtkWidget *button, gpointer data) {
+}
+void undo_clicked(GtkWidget *button, GtkWidget *canvas) {
+	pi--;
+	if (pi < 0) { pi = 0; }
+	gtk_widget_queue_draw(canvas);
+}
+void redo_clicked(GtkWidget *button, GtkWidget *canvas) {
+	pi++;
+	if (pi > pi_max) { pi = pi_max; }
+	gtk_widget_queue_draw(canvas);
+}
+
 void brush_spin_button_change(GtkSpinButton *spin, gpointer data) {
 	int val = gtk_spin_button_get_value_as_int(spin);
 	brush_size = val;
@@ -85,11 +95,28 @@ void brush_spin_button_change(GtkSpinButton *spin, gpointer data) {
 
 void canvas_clicked(GtkGestureClick *gesture, int n, double x, double y,
                     GtkWidget *canvas) {
-	points[pi][0] = (int)x;
-	points[pi][1] = (int)y;
-	points[pi][2] = brush_size;
-	pi++;
-	gtk_widget_queue_draw(canvas);
+	if (click_operation == CLICK_OPERATION_PAINT) {
+		points[pi][0] = (int)x;
+		points[pi][1] = (int)y;
+		points[pi][2] = brush_size;
+		pi++;
+		pi_max++;
+		gtk_widget_queue_draw(canvas);
+	} else if (click_operation == CLICK_OPERATION_GET_COLOR) {
+	}
+}
+
+void mode_switch_callback(GtkSwitch *widget, gboolean newState,
+                          GtkWidget *label) {
+	gtk_switch_set_state(GTK_SWITCH(widget), newState);
+	bool state = gtk_switch_get_state(widget);
+	if (state) {
+		gtk_label_set_label(GTK_LABEL(label), "Paint");
+		click_operation = CLICK_OPERATION_PAINT;
+	} else {
+		gtk_label_set_label(GTK_LABEL(label), "Get Color");
+		click_operation = CLICK_OPERATION_GET_COLOR;
+	}
 }
 
 GtkWidget *make_toolbar(GtkWidget *parent) {
@@ -98,17 +125,41 @@ GtkWidget *make_toolbar(GtkWidget *parent) {
 	gtk_widget_set_halign(GTK_WIDGET(box), GTK_ALIGN_START);
 	gtk_widget_set_valign(GTK_WIDGET(box), GTK_ALIGN_CENTER);
 
-	GtkWidget *openButton = gtk_button_new_with_label("Open");
+	GtkWidget *openButton = gtk_button_new_with_label("Open"),
+	          *saveButton = gtk_button_new_with_label("Save"),
+	          *undoButton = gtk_button_new_with_label("Undo"),
+	          *redoButton = gtk_button_new_with_label("Redo");
+
+	GtkWidget *modeSwitchLabel = gtk_label_new("Get Color"),
+	          *modeSwitch = gtk_switch_new();
+	GtkWidget *modeBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+	gtk_switch_set_active(GTK_SWITCH(modeSwitch), true);
+	gtk_switch_set_state(GTK_SWITCH(modeSwitch), false);
+	g_signal_connect(modeSwitch, "state-set",
+	                 G_CALLBACK(mode_switch_callback), modeSwitchLabel);
+	gtk_box_append(GTK_BOX(modeBox), modeSwitchLabel);
+	gtk_box_append(GTK_BOX(modeBox), modeSwitch);
+
 	GtkWidget *brushSizeSpinButton =
 	    gtk_spin_button_new_with_range(1, 20, 1);
 	gtk_spin_button_set_digits(GTK_SPIN_BUTTON(brushSizeSpinButton), 0);
 
 	g_signal_connect(openButton, "clicked", G_CALLBACK(open_clicked),
 	                 parent);
+	g_signal_connect(saveButton, "clicked", G_CALLBACK(save_clicked),
+	                 parent);
+	g_signal_connect(undoButton, "clicked", G_CALLBACK(undo_clicked),
+	                 canvas);
+	g_signal_connect(redoButton, "clicked", G_CALLBACK(redo_clicked),
+	                 canvas);
 	g_signal_connect(brushSizeSpinButton, "value-changed",
 	                 G_CALLBACK(brush_spin_button_change), NULL);
 
 	gtk_box_append(GTK_BOX(box), openButton);
+	gtk_box_append(GTK_BOX(box), saveButton);
+	gtk_box_append(GTK_BOX(box), undoButton);
+	gtk_box_append(GTK_BOX(box), redoButton);
+	gtk_box_append(GTK_BOX(box), modeBox);
 	gtk_box_append(GTK_BOX(box), brushSizeSpinButton);
 
 	return box;
@@ -124,7 +175,7 @@ void activate(GtkApplication *app, gpointer user_data) {
 	// ------- WINDOW -------
 	gtk_window_set_title(GTK_WINDOW(window), "Main application window");
 	// ------- BOX -------
-	gtk_widget_set_halign(box, GTK_ALIGN_CENTER);
+	gtk_widget_set_halign(box, GTK_ALIGN_START);
 	gtk_widget_set_valign(box, GTK_ALIGN_CENTER);
 	gtk_window_set_child(GTK_WINDOW(window), box);
 
