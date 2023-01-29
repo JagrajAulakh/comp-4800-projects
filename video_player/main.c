@@ -10,9 +10,8 @@ static GdkRGBA point_colors[100], selected_color;
 
 static int brush_size = 1;
 
-static cairo_surface_t *loaded_image = NULL;
-static GtkWidget *canvas = NULL;
-GtkWidget *colorSquare = NULL;
+static cairo_surface_t *loaded_image = NULL, *canvas = NULL;
+GtkWidget *drawingArea = NULL, *colorSquare = NULL;
 
 enum { CLICK_OPERATION_GET_COLOR, CLICK_OPERATION_PAINT };
 static int click_operation = CLICK_OPERATION_GET_COLOR;
@@ -27,48 +26,67 @@ void setWidgetCss(GtkWidget *widget, const char *css) {
 	    GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 
-void draw(GtkDrawingArea *canvas, cairo_t *cr, int width, int height,
+void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
           gpointer data) {
-	GtkStyleContext *context;
+	GtkStyleContext *drawingAreaContext;
 
 	// Get the style context of canvas. The style context let's us draw (I
 	// think)
-	context = gtk_widget_get_style_context(GTK_WIDGET(canvas));
+	drawingAreaContext =
+	    gtk_widget_get_style_context(GTK_WIDGET(drawingArea));
+	cairo_t *canvasCairo = cairo_create(canvas);
 
 	if (loaded_image != NULL) {
 		int image_width = cairo_image_surface_get_width(loaded_image),
 		    image_height = cairo_image_surface_get_height(loaded_image);
 
-		cairo_set_source_surface(cr, loaded_image, 0, 0);
-		cairo_paint(cr);
+		cairo_set_source_surface(canvasCairo, loaded_image, 0, 0);
+		cairo_paint(canvasCairo);
 
 		for (int i = 0; i < pi; i++) {
 			int cx = points[i][0], cy = points[i][1],
 			    brush_size = points[i][2];
 
 			GdkRGBA color = point_colors[i];
-			cairo_set_source_rgb(cr, color.red, color.green,
-			                     color.blue);
-			cairo_arc(cr, cx, cy, brush_size, 0, 2 * M_PI);
-			cairo_fill(cr);
+			cairo_set_source_rgb(canvasCairo, color.red,
+			                     color.green, color.blue);
+			cairo_arc(canvasCairo, cx, cy, brush_size, 0, 2 * M_PI);
+			cairo_fill(canvasCairo);
 		}
+
+		cairo_set_source_surface(cr, canvas, 0, 0);
+		cairo_paint(cr);
 	}
 }
 
+int save_image(const char *path) {
+	cairo_status_t status = cairo_surface_write_to_png(canvas, path);
+	if (status == CAIRO_STATUS_SUCCESS) {
+		return 1;
+	}
+	return 0;
+}
 void load_image(const char *path) {
 	loaded_image = cairo_image_surface_create_from_png(path);
-	gtk_widget_set_size_request(
-	    GTK_WIDGET(canvas), cairo_image_surface_get_width(loaded_image),
+	canvas = cairo_image_surface_create(
+	    cairo_image_surface_get_format(loaded_image),
+	    cairo_image_surface_get_width(loaded_image),
 	    cairo_image_surface_get_height(loaded_image));
+
+	gtk_widget_set_size_request(
+	    GTK_WIDGET(drawingArea),
+	    cairo_image_surface_get_width(loaded_image),
+	    cairo_image_surface_get_height(loaded_image));
+	pi = 0;
+	pi_max = 0;
 }
 
 void open_dialog_response(GtkNativeDialog *dialog, int response) {
 	if (response == GTK_RESPONSE_ACCEPT) {
-		char *path = g_file_get_path(
+		const char *path = g_file_get_path(
 		    gtk_file_chooser_get_file(GTK_FILE_CHOOSER(dialog)));
 		load_image(path);
-		gtk_widget_queue_draw(canvas);
-	} else if (response == GTK_RESPONSE_CANCEL) {
+		gtk_widget_queue_draw(drawingArea);
 	}
 }
 
@@ -87,23 +105,40 @@ void open_clicked(GtkWidget *button, GtkWindow *parent) {
 	                 NULL);
 }
 
-void save_clicked(GtkWidget *button, gpointer data) {
+void save_dialog_response(GtkNativeDialog *dialog, int response) {
+	if (response == GTK_RESPONSE_ACCEPT) {
+		const char *path = g_file_get_path(
+		    gtk_file_chooser_get_file(GTK_FILE_CHOOSER(dialog)));
+		save_image(path);
+	}
 }
 
+void save_clicked(GtkWidget *button, GtkWindow *parent) {
+	GtkFileChooserNative *dialog = gtk_file_chooser_native_new(
+	    "Save png", parent, GTK_FILE_CHOOSER_ACTION_SAVE, "Save", "Cancel");
+	GtkFileFilter *png_filter = gtk_file_filter_new();
+	gtk_file_filter_add_pattern(png_filter, "*.png");
+	gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(dialog), png_filter);
 
-void undo_clicked(GtkWidget *button, GtkWidget *canvas) {
+	gtk_native_dialog_show(GTK_NATIVE_DIALOG(dialog));
+
+	g_signal_connect(dialog, "response", G_CALLBACK(save_dialog_response),
+	                 NULL);
+}
+
+void undo_clicked(GtkWidget *button, GtkWidget *drawingArea) {
 	pi--;
 	if (pi < 0) {
 		pi = 0;
 	}
-	gtk_widget_queue_draw(canvas);
+	gtk_widget_queue_draw(drawingArea);
 }
-void redo_clicked(GtkWidget *button, GtkWidget *canvas) {
+void redo_clicked(GtkWidget *button, GtkWidget *drawingArea) {
 	pi++;
 	if (pi > pi_max) {
 		pi = pi_max;
 	}
-	gtk_widget_queue_draw(canvas);
+	gtk_widget_queue_draw(drawingArea);
 }
 
 void brush_spin_button_change(GtkSpinButton *spin, gpointer data) {
@@ -112,7 +147,7 @@ void brush_spin_button_change(GtkSpinButton *spin, gpointer data) {
 }
 
 void canvas_clicked(GtkGestureClick *gesture, int n, double x, double y,
-                    GtkWidget *canvas) {
+                    GtkWidget *drawingArea) {
 	if (click_operation == CLICK_OPERATION_PAINT) {
 		points[pi][0] = (int)x;
 		points[pi][1] = (int)y;
@@ -123,7 +158,7 @@ void canvas_clicked(GtkGestureClick *gesture, int n, double x, double y,
 
 		pi++;
 		pi_max = pi;
-		gtk_widget_queue_draw(canvas);
+		gtk_widget_queue_draw(drawingArea);
 	} else if (click_operation == CLICK_OPERATION_GET_COLOR) {
 		cairo_surface_flush(loaded_image);
 		unsigned char *image_data =
@@ -133,7 +168,8 @@ void canvas_clicked(GtkGestureClick *gesture, int n, double x, double y,
 		int image_height = cairo_image_surface_get_height(loaded_image);
 
 		int stride = cairo_image_surface_get_stride(loaded_image);
-		unsigned char *pixel = image_data + (int)y * stride + (int)x * 4;
+		unsigned char *pixel =
+		    image_data + (int)y * stride + (int)x * 4;
 		unsigned char r = pixel[2];
 		unsigned char g = pixel[1];
 		unsigned char b = pixel[0];
@@ -142,7 +178,10 @@ void canvas_clicked(GtkGestureClick *gesture, int n, double x, double y,
 		selected_color.blue = (double)b / 255.0;
 
 		char css[200];
-		sprintf(css, "button#color-square { background-color: rgb(%d, %d, %d); }", r, g, b);
+		sprintf(css,
+		        "button#color-square { background-color: rgb(%d, %d, "
+		        "%d); }",
+		        r, g, b);
 		setWidgetCss(colorSquare, css);
 	}
 }
@@ -182,8 +221,8 @@ GtkWidget *make_toolbar(GtkWidget *parent) {
 	gtk_box_append(GTK_BOX(modeBox), modeSwitch);
 
 	GtkWidget *brushSizeSpinButton =
-	    gtk_spin_button_new_with_range(1, 20, 1),
-		*brushSizeLabel = gtk_label_new("Brush size:");
+	              gtk_spin_button_new_with_range(1, 20, 1),
+	          *brushSizeLabel = gtk_label_new("Brush size:");
 	gtk_spin_button_set_digits(GTK_SPIN_BUTTON(brushSizeSpinButton), 0);
 
 	colorSquare = gtk_button_new();
@@ -194,9 +233,9 @@ GtkWidget *make_toolbar(GtkWidget *parent) {
 	g_signal_connect(saveButton, "clicked", G_CALLBACK(save_clicked),
 	                 parent);
 	g_signal_connect(undoButton, "clicked", G_CALLBACK(undo_clicked),
-	                 canvas);
+	                 drawingArea);
 	g_signal_connect(redoButton, "clicked", G_CALLBACK(redo_clicked),
-	                 canvas);
+	                 drawingArea);
 	g_signal_connect(brushSizeSpinButton, "value-changed",
 	                 G_CALLBACK(brush_spin_button_change), NULL);
 
@@ -217,7 +256,7 @@ void activate(GtkApplication *app, gpointer user_data) {
 
 	window = gtk_application_window_new(app);
 	box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-	canvas = gtk_drawing_area_new();
+	drawingArea = gtk_drawing_area_new();
 
 	// ------- WINDOW -------
 	gtk_window_set_title(GTK_WINDOW(window), "Main application window");
@@ -231,16 +270,17 @@ void activate(GtkApplication *app, gpointer user_data) {
 	gtk_box_append(GTK_BOX(box), toolbar);
 
 	// ------- CANVAS -------
-	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(canvas), draw, NULL,
-	                               NULL);
-	gtk_box_append(GTK_BOX(box), canvas);
+	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(drawingArea), draw,
+	                               NULL, NULL);
+	gtk_box_append(GTK_BOX(box), drawingArea);
 	load_image("./demo.png");
 
 	// ------- MOUSE GESTURE -------
 	GtkGesture *clickGesture = gtk_gesture_click_new();
-	gtk_widget_add_controller(canvas, GTK_EVENT_CONTROLLER(clickGesture));
+	gtk_widget_add_controller(drawingArea,
+	                          GTK_EVENT_CONTROLLER(clickGesture));
 	g_signal_connect(clickGesture, "pressed", G_CALLBACK(canvas_clicked),
-	                 canvas);
+	                 drawingArea);
 
 	gtk_widget_show(window);
 }
