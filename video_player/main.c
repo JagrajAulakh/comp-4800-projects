@@ -5,17 +5,26 @@
 // "Points index", not Math.PI lmao
 static int pi = 0;
 static int pi_max = 0;
-static int points[100][3];
-static GdkRGBA point_colors[100], selected_color;
 
+// All the coordinates/sizes for the points you draw
+static int points[300][3];
+// All the colors for the points you draw
+static GdkRGBA point_colors[300], selected_color;
+static int selected_color_point[2] = {0, 0};
+
+// Keeps track of the current brush size
 static int brush_size = 1;
 
+// Loaded image is the image you open with "Open" button,
+// Canvas is the surface you draw to when you click in the drawing area
 static cairo_surface_t *loaded_image = NULL, *canvas = NULL;
 GtkWidget *drawingArea = NULL, *colorSquare = NULL;
 
+// Keep track of which "mode" you are in (draw mode, color pick mode)
 enum { CLICK_OPERATION_GET_COLOR, CLICK_OPERATION_PAINT };
 static int click_operation = CLICK_OPERATION_GET_COLOR;
 
+// Used to set background color of colorSquare
 void setWidgetCss(GtkWidget *widget, const char *css) {
 	GtkCssProvider *provider = gtk_css_provider_new();
 	const char *data = css;
@@ -26,23 +35,20 @@ void setWidgetCss(GtkWidget *widget, const char *css) {
 	    GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 
+// Main function that draws to canvas and drawing area
 void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
           gpointer data) {
-	GtkStyleContext *drawingAreaContext;
-
-	// Get the style context of canvas. The style context let's us draw (I
-	// think)
-	drawingAreaContext =
-	    gtk_widget_get_style_context(GTK_WIDGET(drawingArea));
+	// cairo context for canvas image surface
 	cairo_t *canvasCairo = cairo_create(canvas);
+	int canvasWidth = cairo_image_surface_get_width(canvas),
+	    canvasHeight = cairo_image_surface_get_height(canvas);
 
 	if (loaded_image != NULL) {
-		int image_width = cairo_image_surface_get_width(loaded_image),
-		    image_height = cairo_image_surface_get_height(loaded_image);
-
+		// Draw loaded_image onto canvas first
 		cairo_set_source_surface(canvasCairo, loaded_image, 0, 0);
 		cairo_paint(canvasCairo);
 
+		// Draw all the drawn points onto the canvas
 		for (int i = 0; i < pi; i++) {
 			int cx = points[i][0], cy = points[i][1],
 			    brush_size = points[i][2];
@@ -54,11 +60,26 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 			cairo_fill(canvasCairo);
 		}
 
+		// Draw canvas to the drawingArea context
 		cairo_set_source_surface(cr, canvas, 0, 0);
 		cairo_paint(cr);
+
+		if (click_operation == CLICK_OPERATION_GET_COLOR) {
+			cairo_move_to(cr, 0, selected_color_point[1]);
+			cairo_line_to(cr, canvasWidth, selected_color_point[1]);
+			cairo_set_source_rgb(cr, 1, 0, 0);
+			cairo_set_line_width(cr, 1);
+			cairo_stroke(cr);
+
+			cairo_move_to(cr, selected_color_point[0], 0);
+			cairo_line_to(cr, selected_color_point[0],
+			              canvasHeight);
+			cairo_stroke(cr);
+		}
 	}
 }
 
+// Save canvas image surface to disk
 int save_image(const char *path) {
 	cairo_status_t status = cairo_surface_write_to_png(canvas, path);
 	if (status == CAIRO_STATUS_SUCCESS) {
@@ -66,6 +87,8 @@ int save_image(const char *path) {
 	}
 	return 0;
 }
+
+// Load a PNG image from disk
 void load_image(const char *path) {
 	loaded_image = cairo_image_surface_create_from_png(path);
 	canvas = cairo_image_surface_create(
@@ -81,6 +104,7 @@ void load_image(const char *path) {
 	pi_max = 0;
 }
 
+// Callback for the open dialog window
 void open_dialog_response(GtkNativeDialog *dialog, int response) {
 	if (response == GTK_RESPONSE_ACCEPT) {
 		const char *path = g_file_get_path(
@@ -90,6 +114,7 @@ void open_dialog_response(GtkNativeDialog *dialog, int response) {
 	}
 }
 
+// Callback for the open button
 void open_clicked(GtkWidget *button, GtkWindow *parent) {
 	GtkFileChooserNative *dialog = gtk_file_chooser_native_new(
 	    "Open picture", GTK_WINDOW(parent), GTK_FILE_CHOOSER_ACTION_OPEN,
@@ -105,6 +130,7 @@ void open_clicked(GtkWidget *button, GtkWindow *parent) {
 	                 NULL);
 }
 
+// Callback for the save dialog window
 void save_dialog_response(GtkNativeDialog *dialog, int response) {
 	if (response == GTK_RESPONSE_ACCEPT) {
 		const char *path = g_file_get_path(
@@ -113,6 +139,7 @@ void save_dialog_response(GtkNativeDialog *dialog, int response) {
 	}
 }
 
+// Callback for the save button
 void save_clicked(GtkWidget *button, GtkWindow *parent) {
 	GtkFileChooserNative *dialog = gtk_file_chooser_native_new(
 	    "Save png", parent, GTK_FILE_CHOOSER_ACTION_SAVE, "Save", "Cancel");
@@ -126,6 +153,7 @@ void save_clicked(GtkWidget *button, GtkWindow *parent) {
 	                 NULL);
 }
 
+// Callback for the undo button
 void undo_clicked(GtkWidget *button, GtkWidget *drawingArea) {
 	pi--;
 	if (pi < 0) {
@@ -133,6 +161,8 @@ void undo_clicked(GtkWidget *button, GtkWidget *drawingArea) {
 	}
 	gtk_widget_queue_draw(drawingArea);
 }
+
+// Callback for the redo button
 void redo_clicked(GtkWidget *button, GtkWidget *drawingArea) {
 	pi++;
 	if (pi > pi_max) {
@@ -141,14 +171,17 @@ void redo_clicked(GtkWidget *button, GtkWidget *drawingArea) {
 	gtk_widget_queue_draw(drawingArea);
 }
 
+// Callback for the brush size spin button
 void brush_spin_button_change(GtkSpinButton *spin, gpointer data) {
 	int val = gtk_spin_button_get_value_as_int(spin);
 	brush_size = val;
 }
 
+// Callback for the mouse click gesture on drawing area
 void canvas_clicked(GtkGestureClick *gesture, int n, double x, double y,
                     GtkWidget *drawingArea) {
 	if (click_operation == CLICK_OPERATION_PAINT) {
+		// Store the current mouse (x,y), brush size, and selected color
 		points[pi][0] = (int)x;
 		points[pi][1] = (int)y;
 		points[pi][2] = brush_size;
@@ -158,25 +191,34 @@ void canvas_clicked(GtkGestureClick *gesture, int n, double x, double y,
 
 		pi++;
 		pi_max = pi;
+		// Redraw with the new stored point
 		gtk_widget_queue_draw(drawingArea);
 	} else if (click_operation == CLICK_OPERATION_GET_COLOR) {
 		cairo_surface_flush(loaded_image);
+		// Raw pixel color data
 		unsigned char *image_data =
 		    cairo_image_surface_get_data(loaded_image);
 
-		int image_width = cairo_image_surface_get_width(loaded_image);
-		int image_height = cairo_image_surface_get_height(loaded_image);
-
+		// image stride is the number of bytes that are in one row of
+		// the image
 		int stride = cairo_image_surface_get_stride(loaded_image);
+		// Calculate the index for the targeted pixel
 		unsigned char *pixel =
 		    image_data + (int)y * stride + (int)x * 4;
+		// Get RGB values for that pixel
+		// Note: it's stored as BGR, not RGB!!
 		unsigned char r = pixel[2];
 		unsigned char g = pixel[1];
 		unsigned char b = pixel[0];
+		// Store rgb as selected color
 		selected_color.red = (double)r / 255.0;
 		selected_color.green = (double)g / 255.0;
 		selected_color.blue = (double)b / 255.0;
+		selected_color_point[0] = x;
+		selected_color_point[1] = y;
+		gtk_widget_queue_draw(drawingArea);
 
+		// Update colorSquare to selected color
 		char css[200];
 		sprintf(css,
 		        "button#color-square { background-color: rgb(%d, %d, "
