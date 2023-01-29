@@ -2,7 +2,7 @@
 
 ```bash
 # -- COMPILE --
-$ make polish.c
+$ make polish
 
 # -- RUN --
 $ make run
@@ -16,6 +16,6 @@ building the code:
 
 ```bash
 $ make clean  # Cleans bin/
-$ make polish.c
+$ make polish
 ```
 
