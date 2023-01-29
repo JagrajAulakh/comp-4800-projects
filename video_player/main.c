@@ -6,14 +6,26 @@
 static int pi = 0;
 static int pi_max = 0;
 static int points[100][3];
+static GdkRGBA point_colors[100], selected_color;
 
 static int brush_size = 1;
 
 static cairo_surface_t *loaded_image = NULL;
 static GtkWidget *canvas = NULL;
+GtkWidget *colorSquare = NULL;
 
 enum { CLICK_OPERATION_GET_COLOR, CLICK_OPERATION_PAINT };
 static int click_operation = CLICK_OPERATION_GET_COLOR;
+
+void setWidgetCss(GtkWidget *widget, const char *css) {
+	GtkCssProvider *provider = gtk_css_provider_new();
+	const char *data = css;
+	gtk_css_provider_load_from_data(provider, data, -1);
+	GdkDisplay *displej = gtk_widget_get_display(GTK_WIDGET(widget));
+	gtk_style_context_add_provider_for_display(
+	    displej, GTK_STYLE_PROVIDER(provider),
+	    GTK_STYLE_PROVIDER_PRIORITY_USER);
+}
 
 void draw(GtkDrawingArea *canvas, cairo_t *cr, int width, int height,
           gpointer data) {
@@ -34,7 +46,9 @@ void draw(GtkDrawingArea *canvas, cairo_t *cr, int width, int height,
 			int cx = points[i][0], cy = points[i][1],
 			    brush_size = points[i][2];
 
-			cairo_set_source_rgb(cr, 1, 0, 1);
+			GdkRGBA color = point_colors[i];
+			cairo_set_source_rgb(cr, color.red, color.green,
+			                     color.blue);
 			cairo_arc(cr, cx, cy, brush_size, 0, 2 * M_PI);
 			cairo_fill(cr);
 		}
@@ -52,11 +66,9 @@ void open_dialog_response(GtkNativeDialog *dialog, int response) {
 	if (response == GTK_RESPONSE_ACCEPT) {
 		char *path = g_file_get_path(
 		    gtk_file_chooser_get_file(GTK_FILE_CHOOSER(dialog)));
-		printf("Response %d: accepted, got path %s\n", response, path);
 		load_image(path);
 		gtk_widget_queue_draw(canvas);
 	} else if (response == GTK_RESPONSE_CANCEL) {
-		printf("Response %d: cancelled\n", response);
 	}
 }
 
@@ -77,14 +89,20 @@ void open_clicked(GtkWidget *button, GtkWindow *parent) {
 
 void save_clicked(GtkWidget *button, gpointer data) {
 }
+
+
 void undo_clicked(GtkWidget *button, GtkWidget *canvas) {
 	pi--;
-	if (pi < 0) { pi = 0; }
+	if (pi < 0) {
+		pi = 0;
+	}
 	gtk_widget_queue_draw(canvas);
 }
 void redo_clicked(GtkWidget *button, GtkWidget *canvas) {
 	pi++;
-	if (pi > pi_max) { pi = pi_max; }
+	if (pi > pi_max) {
+		pi = pi_max;
+	}
 	gtk_widget_queue_draw(canvas);
 }
 
@@ -99,10 +117,33 @@ void canvas_clicked(GtkGestureClick *gesture, int n, double x, double y,
 		points[pi][0] = (int)x;
 		points[pi][1] = (int)y;
 		points[pi][2] = brush_size;
+		point_colors[pi].red = selected_color.red;
+		point_colors[pi].green = selected_color.green;
+		point_colors[pi].blue = selected_color.blue;
+
 		pi++;
-		pi_max++;
+		pi_max = pi;
 		gtk_widget_queue_draw(canvas);
 	} else if (click_operation == CLICK_OPERATION_GET_COLOR) {
+		cairo_surface_flush(loaded_image);
+		unsigned char *image_data =
+		    cairo_image_surface_get_data(loaded_image);
+
+		int image_width = cairo_image_surface_get_width(loaded_image);
+		int image_height = cairo_image_surface_get_height(loaded_image);
+
+		int stride = cairo_image_surface_get_stride(loaded_image);
+		unsigned char *pixel = image_data + (int)y * stride + (int)x * 4;
+		unsigned char r = pixel[2];
+		unsigned char g = pixel[1];
+		unsigned char b = pixel[0];
+		selected_color.red = (double)r / 255.0;
+		selected_color.green = (double)g / 255.0;
+		selected_color.blue = (double)b / 255.0;
+
+		char css[200];
+		sprintf(css, "button#color-square { background-color: rgb(%d, %d, %d); }", r, g, b);
+		setWidgetCss(colorSquare, css);
 	}
 }
 
@@ -141,8 +182,12 @@ GtkWidget *make_toolbar(GtkWidget *parent) {
 	gtk_box_append(GTK_BOX(modeBox), modeSwitch);
 
 	GtkWidget *brushSizeSpinButton =
-	    gtk_spin_button_new_with_range(1, 20, 1);
+	    gtk_spin_button_new_with_range(1, 20, 1),
+		*brushSizeLabel = gtk_label_new("Brush size:");
 	gtk_spin_button_set_digits(GTK_SPIN_BUTTON(brushSizeSpinButton), 0);
+
+	colorSquare = gtk_button_new();
+	gtk_widget_set_name(colorSquare, "color-square");
 
 	g_signal_connect(openButton, "clicked", G_CALLBACK(open_clicked),
 	                 parent);
@@ -160,6 +205,8 @@ GtkWidget *make_toolbar(GtkWidget *parent) {
 	gtk_box_append(GTK_BOX(box), undoButton);
 	gtk_box_append(GTK_BOX(box), redoButton);
 	gtk_box_append(GTK_BOX(box), modeBox);
+	gtk_box_append(GTK_BOX(box), colorSquare);
+	gtk_box_append(GTK_BOX(box), brushSizeLabel);
 	gtk_box_append(GTK_BOX(box), brushSizeSpinButton);
 
 	return box;
