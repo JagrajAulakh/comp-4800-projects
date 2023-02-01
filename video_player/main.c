@@ -1,8 +1,11 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libswscale/swscale.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#define FRAME_MAX -1
 
 static void pgm_save(unsigned char *buf, int wrap, int xsize, int ysize,
                      const char *directory, int frame_number) {
@@ -13,8 +16,48 @@ static void pgm_save(unsigned char *buf, int wrap, int xsize, int ysize,
 	sprintf(filename, "%s/%04d.pgm", directory, frame_number);
 	f = fopen(filename, "wb");
 	fprintf(f, "P5\n%d %d\n%d\n", xsize, ysize, 255);
-	for (i = 0; i < ysize; i++) fwrite(buf + i * wrap, 1, xsize, f);
+
+	for (i = 0; i < ysize; i++) {
+		fwrite(buf + i * wrap, 1, xsize * 3, f);
+	}
 	fclose(f);
+}
+
+static void ppm_save(AVFrame *inputframe, const char *directory,
+                     int frame_number) {
+	FILE *f;
+	int xsize = inputframe->width, ysize = inputframe->height,
+	    wrap = inputframe->linesize[1];
+
+	char filename[200];
+	sprintf(filename, "%s/%04d.ppm", directory, frame_number);
+	f = fopen(filename, "wb");
+	fprintf(f, "P6\n%d %d\n%d\n", xsize, ysize, 255);
+
+	// Input frame is in YUV format, convert to RGB24
+	struct SwsContext *sws_ctx =
+	    sws_getContext(xsize, ysize, inputframe->format, xsize, ysize,
+	                   AV_PIX_FMT_RGBA, SWS_BICUBIC, NULL, NULL, NULL);
+	AVFrame *outputFrame = av_frame_alloc();
+	outputFrame->format = AV_PIX_FMT_RGB32;
+	outputFrame->width = inputframe->width;
+	outputFrame->height = inputframe->height;
+	av_frame_get_buffer(outputFrame, 32);
+
+	sws_scale(sws_ctx, (const uint8_t *const *)inputframe->data,
+	          inputframe->linesize, 0, ysize, outputFrame->data,
+	          outputFrame->linesize);
+
+	const unsigned char *buf = outputFrame->data[0];
+	wrap = outputFrame->linesize[0];
+	printf("Writing frame %d\n", frame_number);
+	for (int y = 0; y < ysize; y++) {
+		for (int x = 0; x < xsize; x++) {
+			fwrite(buf + y * wrap + x * 4, 3, 1, f);
+		}
+	}
+	fclose(f);
+	av_frame_free(&outputFrame);
 }
 
 int main(int argc, char **argv) {
@@ -80,17 +123,17 @@ int main(int argc, char **argv) {
 				} else if (result < 0) {
 					return -1;
 				}
-				pgm_save(frame->data[0], frame->linesize[0],
-				         frame->width, frame->height, outdir,
-				         frame_number++);
-				if (frame_number > 10) goto done;
+
+				ppm_save(frame, outdir, frame_number);
+				frame_number++;
+				if (FRAME_MAX != -1 && frame_number >= FRAME_MAX) goto done;
 			}
 		}
 	}
 
 done:
 
-	printf("joe\n");
+	printf("done\n");
 
 	avformat_close_input(&fmt_ctx);
 	avcodec_free_context(&codec_ctx);
