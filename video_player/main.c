@@ -1,12 +1,14 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
+#include <math.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <math.h>
 
-#define FRAME_MAX 1
+// --------------------------
+// Converting RGB to grayscale values
+// --------------------------
 
 unsigned char rgbToGray1(unsigned char r, unsigned char g, unsigned char b) {
 	// Using a standard formula
@@ -16,24 +18,37 @@ unsigned char rgbToGray1(unsigned char r, unsigned char g, unsigned char b) {
 
 unsigned char rgbToGray2(unsigned char r, unsigned char g, unsigned char b) {
 	// Calculating average of RGB components
-	double result = (r+g+b)/3.0;
+	double result = (r + g + b) / 3.0;
 	return (unsigned char)result;
 }
 
 unsigned char rgbToGray3(unsigned char r, unsigned char g, unsigned char b) {
 	// Take average between max(r,g,b) and min(r,g,b)
-	double max = ((r>g)?r:g)>b?g:b;
-	double min = ((r<g)?r:g)<b?g:b;
-	double result = (max+min)/2;
+	double max = ((r > g) ? r : g) > b ? g : b;
+	double min = ((r < g) ? r : g) < b ? g : b;
+	double result = (max + min) / 2;
+	return (unsigned char)result;
+}
+unsigned char rgbToGray4(unsigned char r, unsigned char g, unsigned char b) {
+	// Using a standard formula with different coefficients
+	double result = 0.35 * r + 0.60 * g + 0.10 * b;
 	return (unsigned char)result;
 }
 
+unsigned char rgbToGray5(unsigned char r, unsigned char g, unsigned char b) {
+	// Using a standard formula with different coefficients
+	double result = 0.1 * r + 0.7 * g + 0.04 * b;
+	return (unsigned char)result;
+}
+
+// Convert a frame in YUV format (or any format) to RGB32 format
 static void yuvFrameToRgbFrame(AVFrame *inputFrame, AVFrame *outputFrame) {
-	// Input frame is in YUV format, convert to RGB24
 	struct SwsContext *sws_ctx = sws_getContext(
 	    inputFrame->width, inputFrame->height, inputFrame->format,
 	    inputFrame->width, inputFrame->height, AV_PIX_FMT_RGBA, SWS_BICUBIC,
 	    NULL, NULL, NULL);
+
+	// Set the outputFrame's configuration options
 	outputFrame->format = AV_PIX_FMT_RGB32;
 	outputFrame->width = inputFrame->width;
 	outputFrame->height = inputFrame->height;
@@ -41,70 +56,101 @@ static void yuvFrameToRgbFrame(AVFrame *inputFrame, AVFrame *outputFrame) {
 	// bytes
 	av_frame_get_buffer(outputFrame, 32);
 
+	// sws_scale will actually do the conversion
 	sws_scale(sws_ctx, (const uint8_t *const *)inputFrame->data,
 	          inputFrame->linesize, 0, inputFrame->height,
 	          outputFrame->data, outputFrame->linesize);
 }
 
+// Saves 5 pgm images given an single frame, output dir, and the frame number
 static void pgm_save(AVFrame *inputFrame, const char *directory,
                      int frame_number) {
-	FILE *f1, *f2, *f3;
+	FILE *f1, *f2, *f3, *f4, *f5;
 
-	char filename1[200], filename2[200], filename3[200];
+	// Create the output filenames for the 5 images
+	char filename1[200], filename2[200], filename3[200], filename4[20],
+	    filename5[200];
 	sprintf(filename1, "%s/frame_%04d_01.pgm", directory, frame_number);
 	sprintf(filename2, "%s/frame_%04d_02.pgm", directory, frame_number);
 	sprintf(filename3, "%s/frame_%04d_03.pgm", directory, frame_number);
+	sprintf(filename4, "%s/frame_%04d_04.pgm", directory, frame_number);
+	sprintf(filename5, "%s/frame_%04d_05.pgm", directory, frame_number);
 
+	// Open 5 files for writing, binary (since we are using P5 header)
 	f1 = fopen(filename1, "wb");
 	f2 = fopen(filename2, "wb");
 	f3 = fopen(filename3, "wb");
+	f4 = fopen(filename4, "wb");
+	f5 = fopen(filename5, "wb");
 
+	// Write headers into 5 files
 	fprintf(f1, "P5\n%d %d\n%d\n", inputFrame->width, inputFrame->height,
 	        255);
 	fprintf(f2, "P5\n%d %d\n%d\n", inputFrame->width, inputFrame->height,
 	        255);
 	fprintf(f3, "P5\n%d %d\n%d\n", inputFrame->width, inputFrame->height,
 	        255);
+	fprintf(f4, "P5\n%d %d\n%d\n", inputFrame->width, inputFrame->height,
+	        255);
+	fprintf(f5, "P5\n%d %d\n%d\n", inputFrame->width, inputFrame->height,
+	        255);
 
+	// Allocate output frame for the RGB conversion
 	AVFrame *outputFrame = av_frame_alloc();
+	// Convert input frame colors to RGB
 	yuvFrameToRgbFrame(inputFrame, outputFrame);
 
+	// Retrieve raw data from outputFrame, which hold the colors in RGB32
+	// format
 	const unsigned char *buf = outputFrame->data[0];
 
 	int wrap = outputFrame->linesize[0];
-	// printf("input wrap: %d, output wrap: %d\n", inputFrame->linesize[0],
-	//        outputFrame->linesize[0]);
 	printf("Writing frame %d\n", frame_number);
+
+	// Go through every pixel in the frame
 	for (int y = 0; y < inputFrame->height; y++) {
 		for (int x = 0; x < inputFrame->width; x++) {
+			// Retieve rgb values
 			const unsigned char r = *(buf + y * wrap + x * 4);
 			const unsigned char g = *(buf + y * wrap + x * 4 + 1);
 			const unsigned char b = *(buf + y * wrap + x * 4 + 2);
 
-			unsigned char gray1, gray2, gray3;
+			// Convert rgb to grayscale using 5 different algorithms
+			unsigned char gray1, gray2, gray3, gray4, gray5;
 			gray1 = rgbToGray1(r, g, b);
 			gray2 = rgbToGray2(r, g, b);
 			gray3 = rgbToGray3(r, g, b);
+			gray4 = rgbToGray4(r, g, b);
+			gray5 = rgbToGray5(r, g, b);
+			// Write 5 grayscale values to 5 output files
 			fwrite(&gray1, sizeof(gray1), 1, f1);
 			fwrite(&gray2, sizeof(gray2), 1, f2);
 			fwrite(&gray3, sizeof(gray3), 1, f3);
+			fwrite(&gray4, sizeof(gray4), 1, f4);
+			fwrite(&gray5, sizeof(gray5), 1, f5);
 		}
 	}
 	fclose(f1);
 	fclose(f2);
 	fclose(f3);
+	fclose(f4);
+	fclose(f5);
+	// Dealocate the outupt frame that holds the converted RGB32 data
 	av_frame_free(&outputFrame);
 }
 
 int main(int argc, char **argv) {
 	if (argc <= 2) {
-		fprintf(stderr,
-		        "Usage: %s <input file> <output directory>\n"
-		        "THIS WILL OUTPUT ALL FRAMES OF THE VIDEO: BEWARE!\n",
-		        argv[0]);
+		fprintf(
+		    stderr,
+		    "\n\nUsage: %s <input file> <output directory> [frame number]\n"
+		    "Output directory will be created if doesn't exist\n"
+		    "Frame number is optional, default is first frame\n\n",
+		    argv[0]);
 		exit(0);
 	}
 	const char *filename = argv[1], *outdir = argv[2];
+	int target_frame = (argc == 3 ? 0 : atoi(argv[3]));
 
 	if (mkdir(outdir, 0777) < 0 && errno != EEXIST) {
 		printf("Error making outputdir, error=%d, EEXIST=%d\n", errno,
@@ -160,18 +206,20 @@ int main(int argc, char **argv) {
 					return -1;
 				}
 
-				pgm_save(frame, outdir, frame_number);
+				// Count how many frames we've seen so far
 				frame_number++;
-				if (FRAME_MAX != -1 &&
-				    frame_number >= FRAME_MAX)
+				// If we reach target frame, save it and exit
+				if (frame_number == target_frame) {
+					pgm_save(frame, outdir, frame_number);
 					goto done;
+				}
 			}
 		}
 	}
 
 done:
 
-	printf("done\n");
+	printf("done, decoded %d total frames\n", frame_number);
 
 	avformat_close_input(&fmt_ctx);
 	avcodec_free_context(&codec_ctx);
