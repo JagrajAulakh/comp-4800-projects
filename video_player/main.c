@@ -4,59 +4,95 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <math.h>
 
-#define FRAME_MAX -1
+#define FRAME_MAX 1
 
-static void pgm_save(unsigned char *buf, int wrap, int xsize, int ysize,
-                     const char *directory, int frame_number) {
-	FILE *f;
-	int i;
-
-	char filename[200];
-	sprintf(filename, "%s/%04d.pgm", directory, frame_number);
-	f = fopen(filename, "wb");
-	fprintf(f, "P5\n%d %d\n%d\n", xsize, ysize, 255);
-
-	for (i = 0; i < ysize; i++) {
-		fwrite(buf + i * wrap, 1, xsize * 3, f);
-	}
-	fclose(f);
+unsigned char rgbToGray1(unsigned char r, unsigned char g, unsigned char b) {
+	// Using a standard formula
+	double result = 0.299 * r + 0.587 * g + 0.114 * b;
+	return (unsigned char)result;
 }
 
-static void ppm_save(AVFrame *inputframe, const char *directory,
-                     int frame_number) {
-	FILE *f;
-	int xsize = inputframe->width, ysize = inputframe->height,
-	    wrap = inputframe->linesize[1];
+unsigned char rgbToGray2(unsigned char r, unsigned char g, unsigned char b) {
+	// Calculating average of RGB components
+	double result = (r+g+b)/3.0;
+	return (unsigned char)result;
+}
 
-	char filename[200];
-	sprintf(filename, "%s/%04d.ppm", directory, frame_number);
-	f = fopen(filename, "wb");
-	fprintf(f, "P6\n%d %d\n%d\n", xsize, ysize, 255);
+unsigned char rgbToGray3(unsigned char r, unsigned char g, unsigned char b) {
+	// Take average between max(r,g,b) and min(r,g,b)
+	double max = ((r>g)?r:g)>b?g:b;
+	double min = ((r<g)?r:g)<b?g:b;
+	double result = (max+min)/2;
+	return (unsigned char)result;
+}
 
+static void yuvFrameToRgbFrame(AVFrame *inputFrame, AVFrame *outputFrame) {
 	// Input frame is in YUV format, convert to RGB24
-	struct SwsContext *sws_ctx =
-	    sws_getContext(xsize, ysize, inputframe->format, xsize, ysize,
-	                   AV_PIX_FMT_RGBA, SWS_BICUBIC, NULL, NULL, NULL);
-	AVFrame *outputFrame = av_frame_alloc();
+	struct SwsContext *sws_ctx = sws_getContext(
+	    inputFrame->width, inputFrame->height, inputFrame->format,
+	    inputFrame->width, inputFrame->height, AV_PIX_FMT_RGBA, SWS_BICUBIC,
+	    NULL, NULL, NULL);
 	outputFrame->format = AV_PIX_FMT_RGB32;
-	outputFrame->width = inputframe->width;
-	outputFrame->height = inputframe->height;
+	outputFrame->width = inputFrame->width;
+	outputFrame->height = inputFrame->height;
+	// Allocates memory for outputFrame->data, second argument is padding in
+	// bytes
 	av_frame_get_buffer(outputFrame, 32);
 
-	sws_scale(sws_ctx, (const uint8_t *const *)inputframe->data,
-	          inputframe->linesize, 0, ysize, outputFrame->data,
-	          outputFrame->linesize);
+	sws_scale(sws_ctx, (const uint8_t *const *)inputFrame->data,
+	          inputFrame->linesize, 0, inputFrame->height,
+	          outputFrame->data, outputFrame->linesize);
+}
+
+static void pgm_save(AVFrame *inputFrame, const char *directory,
+                     int frame_number) {
+	FILE *f1, *f2, *f3;
+
+	char filename1[200], filename2[200], filename3[200];
+	sprintf(filename1, "%s/frame_%04d_01.pgm", directory, frame_number);
+	sprintf(filename2, "%s/frame_%04d_02.pgm", directory, frame_number);
+	sprintf(filename3, "%s/frame_%04d_03.pgm", directory, frame_number);
+
+	f1 = fopen(filename1, "wb");
+	f2 = fopen(filename2, "wb");
+	f3 = fopen(filename3, "wb");
+
+	fprintf(f1, "P5\n%d %d\n%d\n", inputFrame->width, inputFrame->height,
+	        255);
+	fprintf(f2, "P5\n%d %d\n%d\n", inputFrame->width, inputFrame->height,
+	        255);
+	fprintf(f3, "P5\n%d %d\n%d\n", inputFrame->width, inputFrame->height,
+	        255);
+
+	AVFrame *outputFrame = av_frame_alloc();
+	yuvFrameToRgbFrame(inputFrame, outputFrame);
 
 	const unsigned char *buf = outputFrame->data[0];
-	wrap = outputFrame->linesize[0];
+
+	int wrap = outputFrame->linesize[0];
+	// printf("input wrap: %d, output wrap: %d\n", inputFrame->linesize[0],
+	//        outputFrame->linesize[0]);
 	printf("Writing frame %d\n", frame_number);
-	for (int y = 0; y < ysize; y++) {
-		for (int x = 0; x < xsize; x++) {
-			fwrite(buf + y * wrap + x * 4, 3, 1, f);
+	for (int y = 0; y < inputFrame->height; y++) {
+		for (int x = 0; x < inputFrame->width; x++) {
+			const unsigned char r = *(buf + y * wrap + x * 4);
+			const unsigned char g = *(buf + y * wrap + x * 4 + 1);
+			const unsigned char b = *(buf + y * wrap + x * 4 + 2);
+
+			unsigned char gray1, gray2, gray3;
+			gray1 = rgbToGray1(r, g, b);
+			gray2 = rgbToGray2(r, g, b);
+			gray3 = rgbToGray3(r, g, b);
+			fwrite(&gray1, sizeof(gray1), 1, f1);
+			fwrite(&gray2, sizeof(gray2), 1, f2);
+			fwrite(&gray3, sizeof(gray3), 1, f3);
 		}
 	}
-	fclose(f);
+	fclose(f1);
+	fclose(f2);
+	fclose(f3);
 	av_frame_free(&outputFrame);
 }
 
@@ -124,9 +160,11 @@ int main(int argc, char **argv) {
 					return -1;
 				}
 
-				ppm_save(frame, outdir, frame_number);
+				pgm_save(frame, outdir, frame_number);
 				frame_number++;
-				if (FRAME_MAX != -1 && frame_number >= FRAME_MAX) goto done;
+				if (FRAME_MAX != -1 &&
+				    frame_number >= FRAME_MAX)
+					goto done;
 			}
 		}
 	}
