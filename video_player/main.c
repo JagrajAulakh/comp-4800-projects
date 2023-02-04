@@ -1,3 +1,4 @@
+#include <gtk/gtk.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
@@ -5,6 +6,22 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+struct Params {
+	const char *videoFilename;
+	const char *outputDir;
+	int targetFrame;
+};
+
+void setWidgetCss(GtkWidget *widget, const char *css) {
+	GtkCssProvider *provider = gtk_css_provider_new();
+	const char *data = css;
+	gtk_css_provider_load_from_data(provider, data, -1);
+	GdkDisplay *displej = gtk_widget_get_display(GTK_WIDGET(widget));
+	gtk_style_context_add_provider_for_display(
+	    displej, GTK_STYLE_PROVIDER(provider),
+	    GTK_STYLE_PROVIDER_PRIORITY_USER);
+}
 
 // --------------------------
 // Converting RGB to grayscale values
@@ -29,6 +46,7 @@ unsigned char rgbToGray3(unsigned char r, unsigned char g, unsigned char b) {
 	double result = (max + min) / 2;
 	return (unsigned char)result;
 }
+
 unsigned char rgbToGray4(unsigned char r, unsigned char g, unsigned char b) {
 	// Using a standard formula with different coefficients
 	double result = 0.35 * r + 0.60 * g + 0.10 * b;
@@ -217,6 +235,48 @@ int outputFrames(const char *videoFilename, const char *outdir,
 	return 0;
 }
 
+void activate(GtkApplication *app, struct Params *params) {
+	GtkWidget *window, *box;
+	GtkWidget *pictures[5];
+
+	window = gtk_application_window_new(app);
+	gtk_window_set_title(GTK_WINDOW(window), "Grayscale frames");
+
+	box = gtk_flow_box_new();
+
+	for (int i = 0; i < 5; i++) {
+		char filename[200], labelString[10];
+		GtkWidget *picture, *label;
+		sprintf(filename, "%s/frame_%04d_%02d.pgm", params->outputDir,
+		        params->targetFrame, i + 1);
+		sprintf(labelString, "%d", i + 1);
+		pictures[i] = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+		picture = gtk_picture_new_for_filename(filename);
+		label = gtk_label_new(labelString);
+		gtk_widget_set_name(label, "label");
+		gtk_picture_set_content_fit(GTK_PICTURE(picture), GTK_CONTENT_FIT_CONTAIN);
+		gtk_box_append(GTK_BOX(pictures[i]), label);
+		gtk_box_append(GTK_BOX(pictures[i]), picture);
+	}
+
+	for (int i = 0; i < 5; i++) {
+		gtk_flow_box_append(GTK_FLOW_BOX(box), *(pictures + i));
+	}
+
+	gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(box), GTK_SELECTION_NONE);
+	gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(box), 1);
+	gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(box), 3);
+	gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(box), 3);
+	gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(box), 32);
+	gtk_widget_set_valign(box, GTK_ALIGN_START);
+
+	gtk_window_set_child(GTK_WINDOW(window), box);
+	setWidgetCss(window, "#label { font-size: 32px; }");
+
+	gtk_widget_show(window);
+	free(params);
+}
+
 int main(int argc, char **argv) {
 	if (argc <= 2) {
 		fprintf(stderr,
@@ -228,7 +288,8 @@ int main(int argc, char **argv) {
 		exit(0);
 	}
 	const char *filename = argv[1], *outdir = argv[2];
-	int target_frame = (argc == 3 ? 0 : atoi(argv[3]));
+	int target_frame = (argc == 3 ? 1 : atoi(argv[3]));
+	printf("argc=%d, target_frame=%d\n", argc, target_frame);
 
 	if (!makeOutputDir(outdir)) {
 		return EXIT_FAILURE;
@@ -238,6 +299,19 @@ int main(int argc, char **argv) {
 		return EXIT_FAILURE;
 	}
 
+	GtkApplication *app;
+	int status;
+	app = gtk_application_new("com.jagrajaulakh.frames",
+	                          G_APPLICATION_DEFAULT_FLAGS);
+
+	struct Params *params = malloc(sizeof(struct Params *));
+	params->outputDir = outdir;
+	params->videoFilename = filename;
+	params->targetFrame = target_frame;
+
+	char *newArgv[] = {argv[1]};
+	g_signal_connect(app, "activate", G_CALLBACK(activate), params);
+	status = g_application_run(G_APPLICATION(app), 1, newArgv);
 
 	return 0;
 }
