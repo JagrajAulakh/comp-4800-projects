@@ -139,27 +139,20 @@ static void pgm_save(AVFrame *inputFrame, const char *directory,
 	av_frame_free(&outputFrame);
 }
 
-int main(int argc, char **argv) {
-	if (argc <= 2) {
-		fprintf(
-		    stderr,
-		    "\n\nUsage: %s <input file> <output directory> [frame number]\n"
-		    "Output directory will be created if doesn't exist\n"
-		    "Frame number is optional, default is first frame\n\n",
-		    argv[0]);
-		exit(0);
-	}
-	const char *filename = argv[1], *outdir = argv[2];
-	int target_frame = (argc == 3 ? 0 : atoi(argv[3]));
-
+int makeOutputDir(const char *outdir) {
 	if (mkdir(outdir, 0777) < 0 && errno != EEXIST) {
-		printf("Error making outputdir, error=%d, EEXIST=%d\n", errno,
-		       EEXIST);
-		return EXIT_FAILURE;
+		fprintf(stderr, "Error making outputdir, error=%d, EEXIST=%d\n",
+		        errno, EEXIST);
+		return 0;
 	}
+	return 1;
+}
+
+int outputFrames(const char *videoFilename, const char *outdir,
+                 int target_frame) {
 	AVFormatContext *fmt_ctx = NULL;
 	// Open video file
-	avformat_open_input(&fmt_ctx, filename, NULL, NULL);
+	avformat_open_input(&fmt_ctx, videoFilename, NULL, NULL);
 	// Retrieve the stream info and write it fmt_ctx.
 	avformat_find_stream_info(fmt_ctx, NULL);
 
@@ -203,7 +196,7 @@ int main(int argc, char **argv) {
 					printf("%d ERROR EOF\n", frame_number);
 					break;
 				} else if (result < 0) {
-					return -1;
+					return 0;
 				}
 
 				// Count how many frames we've seen so far
@@ -211,18 +204,40 @@ int main(int argc, char **argv) {
 				// If we reach target frame, save it and exit
 				if (frame_number == target_frame) {
 					pgm_save(frame, outdir, frame_number);
-					goto done;
+					avformat_close_input(&fmt_ctx);
+					avcodec_free_context(&codec_ctx);
+					return 1;
 				}
 			}
 		}
 	}
 
-done:
-
-	printf("done, decoded %d total frames\n", frame_number);
-
 	avformat_close_input(&fmt_ctx);
 	avcodec_free_context(&codec_ctx);
+	return 0;
+}
+
+int main(int argc, char **argv) {
+	if (argc <= 2) {
+		fprintf(stderr,
+		        "\n\nUsage: %s <input file> <output directory> [frame "
+		        "number]\n"
+		        "Output directory will be created if doesn't exist\n"
+		        "Frame number is optional, default is first frame\n\n",
+		        argv[0]);
+		exit(0);
+	}
+	const char *filename = argv[1], *outdir = argv[2];
+	int target_frame = (argc == 3 ? 0 : atoi(argv[3]));
+
+	if (!makeOutputDir(outdir)) {
+		return EXIT_FAILURE;
+	}
+
+	if (!outputFrames(filename, outdir, target_frame)) {
+		return EXIT_FAILURE;
+	}
+
 
 	return 0;
 }
