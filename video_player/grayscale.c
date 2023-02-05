@@ -309,7 +309,7 @@ int main(int argc, char **argv) {
 	params->videoFilename = filename;
 	params->targetFrame = target_frame;
 
-	char *newArgv[] = {argv[1]};
+	char *newArgv[] = {argv[0]};
 	g_signal_connect(app, "activate", G_CALLBACK(activate), params);
 	status = g_application_run(G_APPLICATION(app), 1, newArgv);
 
