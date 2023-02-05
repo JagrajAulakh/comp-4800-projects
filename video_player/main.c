@@ -86,7 +86,7 @@ static void pgm_save(AVFrame *inputFrame, const char *directory,
 	FILE *f1, *f2, *f3, *f4, *f5;
 
 	// Create the output filenames for the 5 images
-	char filename1[200], filename2[200], filename3[200], filename4[20],
+	char filename1[200], filename2[200], filename3[200], filename4[200],
 	    filename5[200];
 	sprintf(filename1, "%s/frame_%04d_01.pgm", directory, frame_number);
 	sprintf(filename2, "%s/frame_%04d_02.pgm", directory, frame_number);
@@ -128,7 +128,7 @@ static void pgm_save(AVFrame *inputFrame, const char *directory,
 	// Go through every pixel in the frame
 	for (int y = 0; y < inputFrame->height; y++) {
 		for (int x = 0; x < inputFrame->width; x++) {
-			// Retieve rgb values
+			// Retrieve rgb values
 			const unsigned char r = *(buf + y * wrap + x * 4);
 			const unsigned char g = *(buf + y * wrap + x * 4 + 1);
 			const unsigned char b = *(buf + y * wrap + x * 4 + 2);
