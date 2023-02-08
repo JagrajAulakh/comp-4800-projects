@@ -52,6 +52,9 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 				cairo_rectangle(cr,
 				bx*stride_x+stride_x/2-px/2,
 				by*stride_y+stride_y/2-py/2, px, py);
+				// cairo_arc(cr, bx * stride_x + stride_x / 2,
+				//           by * stride_y + stride_y / 2,
+				//           (px < py ? px : py)/2, 0, 2 * M_PI);
 				cairo_clip(cr);
 				cairo_paint(cr);
 			}
