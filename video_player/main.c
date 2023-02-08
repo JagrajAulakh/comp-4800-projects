@@ -7,7 +7,7 @@ static GtkWidget *drawingArea;
 static GTimer *timer;
 static cairo_surface_t *image1, *image2;
 
-const unsigned long duration = 1500;
+const unsigned long duration = 800;
 
 void setWidgetCss(GtkWidget *widget, const char *css) {
 	GtkCssProvider *provider = gtk_css_provider_new();
@@ -25,21 +25,32 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 		cairo_set_source_surface(cr, image1, 0, 0);
 		cairo_paint(cr);
 
-		double percentage = 1.0, smooth_percentage1 = 1.0, smooth_percentage2 = 1.0;
+		double percentage = 0.0, smooth_percentage1 = 0.0, smooth_percentage2 = 0.0;
 		if (g_timer_is_active(timer)) {
 			percentage = g_timer_elapsed(timer,NULL)*1000 / duration;
-			smooth_percentage1 = (1-cos(percentage * M_PI))/2;
-			smooth_percentage2 = percentage*percentage;
+			smooth_percentage1 = (1-cos(percentage * M_PI))/2; // cosine
+			smooth_percentage2 = percentage*percentage;        // x^2
 		}
-		cairo_set_source_rgb(cr, 1, 0, 0);
-		cairo_rectangle(cr, cairo_image_surface_get_width(image1)/2-50*smooth_percentage1, cairo_image_surface_get_height(image1)/2-50*smooth_percentage1, 100*smooth_percentage1, 100*smooth_percentage1);
-		cairo_fill(cr);
 
-		// cairo_new_sub_path(cr);
-		cairo_set_source_rgb(cr, 0, 0, 1);
-		cairo_move_to(cr, 200, 200);
-		cairo_arc(cr, 200, 200, 50, 2*M_PI*smooth_percentage2, 2*M_PI*percentage);
-		cairo_fill(cr);
+		int total_width = cairo_image_surface_get_width(image1);
+		int total_height = cairo_image_surface_get_height(image1);
+		const int boxes_x = 6;
+		const int boxes_y = 2;
+
+		int stride_x = total_width/boxes_x;
+		int stride_y = total_height/boxes_y;
+
+		cairo_set_source_surface(cr, image2, 0, 0);
+		for (int bx = 0; bx < boxes_x; bx++) {
+			for (int by = 0; by < boxes_y; by++) {
+				cairo_reset_clip(cr);
+				int px = stride_x * percentage;
+				int py = stride_y * percentage;
+				cairo_rectangle(cr, bx*stride_x+stride_x/2-px/2, by*stride_y+stride_y/2-py/2, px, py);
+				cairo_clip(cr);
+				cairo_paint(cr);
+			}
+		}
 
 	}
 	
