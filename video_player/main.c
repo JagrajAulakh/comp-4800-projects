@@ -25,20 +25,23 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 		cairo_set_source_surface(cr, image1, 0, 0);
 		cairo_paint(cr);
 
-		double percentage = 0.0, smooth_percentage1 = 0.0, smooth_percentage2 = 0.0;
+		static double percentage = 0.0, smooth_percentage1 = 0.0,
+		       smooth_percentage2 = 0.0;
 		if (g_timer_is_active(timer)) {
-			percentage = g_timer_elapsed(timer,NULL)*1000 / duration;
-			smooth_percentage1 = (1-cos(percentage * M_PI))/2; // cosine
-			smooth_percentage2 = percentage*percentage;        // x^2
+			percentage =
+			    g_timer_elapsed(timer, NULL) * 1000 / duration;
+			smooth_percentage1 =
+			    (1 - cos(percentage * M_PI)) / 2;          // cosine
+			smooth_percentage2 = percentage * percentage;  // x^2
 		}
 
 		int total_width = cairo_image_surface_get_width(image1);
 		int total_height = cairo_image_surface_get_height(image1);
-		const int boxes_x = 6;
+		const int boxes_x = 5;
 		const int boxes_y = 2;
 
-		int stride_x = total_width/boxes_x;
-		int stride_y = total_height/boxes_y;
+		int stride_x = total_width / boxes_x;
+		int stride_y = total_height / boxes_y;
 
 		cairo_set_source_surface(cr, image2, 0, 0);
 		for (int bx = 0; bx < boxes_x; bx++) {
@@ -46,32 +49,30 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 				cairo_reset_clip(cr);
 				int px = stride_x * percentage;
 				int py = stride_y * percentage;
-				cairo_rectangle(cr, bx*stride_x+stride_x/2-px/2, by*stride_y+stride_y/2-py/2, px, py);
+				cairo_rectangle(cr,
+				bx*stride_x+stride_x/2-px/2,
+				by*stride_y+stride_y/2-py/2, px, py);
 				cairo_clip(cr);
 				cairo_paint(cr);
 			}
 		}
-
 	}
-	
 }
 
 void *drawing_loop(void *d) {
 	unsigned long duration = *((unsigned long *)d);
 	double elapsed_time = 0;
 
-	printf("got duration: %lu\n", duration);
 	if (timer == NULL) {
 		fprintf(stderr, "Timer is null\n");
 		pthread_exit(NULL);
 	}
 
-	while ((elapsed_time*1000) < duration) {
+	while ((elapsed_time * 1000) < duration) {
 		elapsed_time = g_timer_elapsed(timer, NULL);
 	}
 	g_timer_stop(timer);
 
-	puts("KILLING THREAD");
 	pthread_exit(NULL);
 }
 
@@ -85,10 +86,8 @@ void start_timer_click_callback(GtkWidget *button, gpointer data) {
 
 	pthread_t drawing_thread;
 
-	pthread_create(&drawing_thread, NULL, drawing_loop,
-	                                (void *)&duration);
+	pthread_create(&drawing_thread, NULL, drawing_loop, (void *)&duration);
 	// pthread_join(drawing_thread, NULL);
-
 }
 
 GtkWidget *make_toolbar(GtkWidget *parent) {
@@ -143,7 +142,8 @@ void activate(GtkApplication *app, gpointer user_data) {
 	g_timer_stop(timer);
 	g_timer_reset(timer);
 
-	g_timeout_add(1000/60, (GSourceFunc)gtk_widget_queue_draw, drawingArea);
+	g_timeout_add(1000 / 60, (GSourceFunc)gtk_widget_queue_draw,
+	              drawingArea);
 	gtk_widget_queue_draw(drawingArea);
 	gtk_widget_show(window);
 }
