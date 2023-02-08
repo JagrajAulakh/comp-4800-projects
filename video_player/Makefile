@@ -1,12 +1,12 @@
-SOURCE_FILES = ./polish.c
-OUTPUT=polish.out
+SOURCE_FILES = ./main.c
+OUTPUT=main.out
 
 CFLAGS=`pkg-config --cflags cairo gtk4`
 LIBS=`pkg-config --libs cairo gtk4`
 
-polish: $(SOURCE_FILES)
+build: $(SOURCE_FILES)
 	mkdir -p bin/ && \
-	gcc $(CFLAGS) $(LIBS) $(SOURCE_FILES) -o bin/$(OUTPUT)
+	gcc $(CFLAGS) $(LIBS) $(SOURCE_FILES) -o bin/$(OUTPUT) -lm
 
 run:
 	bin/$(OUTPUT)
