@@ -4,7 +4,6 @@
 #include <stdio.h>
 
 #include "firework.h"
-#include "queue.h"
 
 typedef struct {
 	int x, y, size;
@@ -17,7 +16,7 @@ static int mx, my;
 static Eye eyes[4];
 
 static Firework *firework;
-static Queue *fireworks;
+static GQueue *fireworks;
 
 double getAngle(double x1, double y1, double x2, double y2) {
 	return atan2((y2 - y1), (x2 - x1));
@@ -52,43 +51,25 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 		cairo_fill(cr);
 	}
 
-	int i = 0;
-	Node *tmp = queue_get_head(fireworks);
-	while (tmp != NULL) {
-		Firework *f = node_get_firework(tmp);
-
-		firework_draw(cr, f);
-
-		if (!node_get_next(tmp)) {
-			break;
-		}
-		tmp = node_get_next(tmp);
-	}
-
-	printf("Lock=%d, Size=%d\n", queue_get_lock(fireworks),
-	       queue_size(fireworks));
+	g_queue_foreach(fireworks, firework_draw, cr);
+	// while (tmp != NULL) {
+	// 	Firework *f = node_get_firework(tmp);
+	//
+	// 	firework_draw(cr, f);
+	//
+	// 	if (!node_get_next(tmp)) {
+	// 		break;
+	// 	}
+	// 	tmp = node_get_next(tmp);
+	// }
+	//
+	// printf("Lock=%d, Size=%d\n", queue_get_lock(fireworks),
+	//        queue_size(fireworks));
 }
-
-// void *drawing_loop(void *d) {
-// 	unsigned long duration = *((unsigned long *)d);
-// 	double elapsed_time = 0;
-//
-// 	if (timer == NULL) {
-// 		fprintf(stderr, "Timer is null\n");
-// 		pthread_exit(NULL);
-// 	}
-//
-// 	while ((elapsed_time * 1000) < duration) {
-// 		elapsed_time = g_timer_elapsed(timer, NULL);
-// 	}
-// 	g_timer_stop(timer);
-//
-// 	pthread_exit(NULL);
-// }
 
 void click_callback(GtkGestureClick *gesture, int n, double x, double y,
                     gpointer data) {
-	queue_add(fireworks, firework_new(fireworks, (int)x, (int)y));
+	g_queue_push_tail(fireworks, firework_new(fireworks, (int)x, (int)y));
 }
 
 void mouse_motion(GtkWidget widget, double x, double y, gpointer data) {
@@ -155,7 +136,7 @@ void activate(GtkApplication *app, gpointer user_data) {
 	              drawingArea);
 
 	// ------- FIREWORK SETUP -------
-	fireworks = queue_new();
+	fireworks = g_queue_new();
 
 	gtk_widget_show(window);
 }

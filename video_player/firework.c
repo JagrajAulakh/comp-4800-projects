@@ -5,17 +5,15 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#include "queue.h"
-
 struct firework {
 	GTimer *timers[20];
 	int x, y, num_of_angles;
 	double r, g, b, angles[20];
 	int max_duration;
-	Queue *q;
+	GQueue *q;
 };
 
-Firework *firework_new(Queue *q, int x, int y) {
+Firework *firework_new(GQueue *q, int x, int y) {
 	Firework *f = (Firework *)malloc(sizeof(Firework));
 
 	f->x = x;
@@ -68,7 +66,10 @@ double firework_get_percentage(Firework *f, int i) {
 	return p;
 }
 
-void firework_draw(cairo_t *cr, Firework *f) {
+void firework_draw(void *fa, void *cra) {
+	Firework *f = (Firework *)fa;
+	cairo_t *cr = (cairo_t *)cra;
+
 	cairo_set_source_rgb(cr, firework_get_r(f), firework_get_g(f),
 	                     firework_get_b(f));
 	for (int i = 0; i < f->num_of_angles; i++) {
@@ -121,7 +122,7 @@ void *monitor_timer(void *arg) {
 	}
 	g_timer_stop(f->timers[i]);
 
-	queue_delete(f->q, f);
+	if (i == 0) g_queue_remove(f->q, f);
 
 	pthread_exit(NULL);
 }

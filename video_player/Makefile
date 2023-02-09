@@ -1,4 +1,4 @@
-SOURCE_FILES = ./main.c ./queue.c ./queue.h ./firework.c ./firework.h
+SOURCE_FILES = ./main.c ./firework.c ./firework.h
 OUTPUT=main.out
 
 CFLAGS=`pkg-config --cflags cairo gtk4`
@@ -11,10 +11,6 @@ build: $(SOURCE_FILES)
 firework: firework.c
 	mkdir -p bin/ && \
 	gcc -ggdb $(CFLAGS) $(LIBS) firework.c -o bin/firework -lm
-
-queue: queue.c queue.h firework.c firework.h
-	mkdir -p bin/ && \
-	gcc -ggdb $(CFLAGS) $(LIBS) queue.c firework.c -o bin/queue -lm
 
 run:
 	bin/$(OUTPUT)
