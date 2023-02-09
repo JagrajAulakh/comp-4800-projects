@@ -4,9 +4,8 @@
 #include <gtk/gtk.h>
 
 typedef struct firework Firework;
-typedef struct queue Queue;
 
-Firework *firework_new(Queue *q, int x, int y);
+Firework *firework_new(GQueue *q, int x, int y);
 void firework_random_color(Firework *f);
 
 int firework_get_x(Firework *f);
@@ -18,7 +17,7 @@ int firework_get_b(Firework *f);
 int firework_get_num_of_angles(Firework *f);
 void firework_print(Firework *f);
 double *firework_get_angles(Firework *f);
-void firework_draw(cairo_t *cr, Firework *f);
+void firework_draw(void *fa, void *cra);
 
 double firework_get_percentage(Firework *f, int i);
 void firework_make_thread(Firework *f);
