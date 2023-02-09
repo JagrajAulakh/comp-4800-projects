@@ -3,9 +3,11 @@
 #include <pthread.h>
 #include <stdio.h>
 
+#include "firework.h"
+#include "queue.h"
 
 typedef struct {
-	int x, y;
+	int x, y, size;
 } Eye;
 
 static GtkWidget *drawingArea;
@@ -14,8 +16,11 @@ static cairo_surface_t *canvas, *backgroundImage;
 static int mx, my;
 static Eye eyes[4];
 
+static Firework *firework;
+static Queue *fireworks;
+
 double getAngle(double x1, double y1, double x2, double y2) {
-	return atan((y2-y1)/(x2-x1));
+	return atan2((y2 - y1), (x2 - x1));
 }
 
 void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
@@ -23,12 +28,41 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 	cairo_set_source_surface(cr, backgroundImage, 0, 0);
 	cairo_paint(cr);
 
-	cairo_set_source_rgb(cr, 1, 0, 1);
 	// Draw eyes
-	for (int i = 0; i < 2; i++) {
+	for (int i = 0; i < 4; i++) {
 		Eye eye = eyes[i];
-		cairo_arc(cr, eye.x, eye.y, 30, 0, 2 * M_PI);
+		if (eye.x == 0 || eye.y == 0) break;
+
+		cairo_set_source_rgb(cr, 1, 1, 0);
+		cairo_arc(cr, eye.x, eye.y, eye.size, 0, 2 * M_PI);
 		cairo_fill(cr);
+
+		double angle = getAngle(eye.x, eye.y, mx, my);
+
+		int p_size = 10;
+		int p_rad = eye.size - p_size;
+		int d = (p_rad * p_rad) < ((eye.x - mx) * (eye.x - mx) +
+		                           (eye.y - my) * (eye.y - my))
+		            ? p_rad
+		            : sqrt((eye.x - mx) * (eye.x - mx) +
+		                   (eye.y - my) * (eye.y - my));
+		cairo_set_source_rgb(cr, 0, 0, 0);
+		cairo_arc(cr, eye.x + d * cos(angle), eye.y + d * sin(angle),
+		          p_size, 0, 2 * M_PI);
+		cairo_fill(cr);
+	}
+
+	int i = 0;
+	Node *tmp = queue_get_head(fireworks);
+	while (tmp != NULL) {
+		Firework *f = node_get_firework(tmp);
+
+		firework_draw(cr, f);
+
+		if (!node_get_next(tmp)) {
+			break;
+		}
+		tmp = node_get_next(tmp);
 	}
 }
 
@@ -48,6 +82,12 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 //
 // 	pthread_exit(NULL);
 // }
+
+void click_callback(GtkGestureClick *gesture, int n, double x, double y,
+		gpointer data) {
+	queue_add(fireworks, firework_new((int)x, (int)y));
+}
+
 
 void mouse_motion(GtkWidget widget, double x, double y, gpointer data) {
 	mx = (int)x;
@@ -89,11 +129,32 @@ void activate(GtkApplication *app, gpointer user_data) {
 	g_signal_connect(mouseMotionController, "motion",
 	                 G_CALLBACK(mouse_motion), NULL);
 
+	GtkGesture *mouseClickGesture = gtk_gesture_click_new();
+	gtk_widget_add_controller(drawingArea,
+	                          GTK_EVENT_CONTROLLER(mouseClickGesture));
+
+	g_signal_connect(mouseClickGesture, "pressed", G_CALLBACK(click_callback), NULL);
+
 	// ------- EYES -------
 	eyes[0].x = 627;
 	eyes[0].y = 383;
 	eyes[1].x = 700;
 	eyes[1].y = 383;
+	eyes[0].size = eyes[1].size = 30;
+
+	eyes[2].x = 837;
+	eyes[2].y = 532;
+	eyes[3].x = 932;
+	eyes[3].y = 530;
+	eyes[3].size = eyes[2].size = 40;
+
+	g_timeout_add(1000 / 60, (GSourceFunc)gtk_widget_queue_draw,
+	              drawingArea);
+
+	// ------- FIREWORK SETUP -------
+	fireworks = queue_new();
+
+	firework = firework_new(100, 100);
 
 	gtk_widget_show(window);
 }
