@@ -4,8 +4,9 @@
 #include <gtk/gtk.h>
 
 typedef struct firework Firework;
+typedef struct queue Queue;
 
-Firework *firework_new(int x, int y);
+Firework *firework_new(Queue *q, int x, int y);
 void firework_random_color(Firework *f);
 
 int firework_get_x(Firework *f);
