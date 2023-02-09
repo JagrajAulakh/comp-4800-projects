@@ -72,6 +72,8 @@ void firework_draw(void *fa, void *cra) {
 
 	cairo_set_source_rgb(cr, firework_get_r(f), firework_get_g(f),
 	                     firework_get_b(f));
+	cairo_set_line_width(cr, 5);
+
 	for (int i = 0; i < f->num_of_angles; i++) {
 		GTimer *t = f->timers[i];
 		if (g_timer_is_active(t)) {
@@ -85,15 +87,15 @@ void firework_draw(void *fa, void *cra) {
 			cairo_set_source_rgb(cr, f->r, f->g, f->b);
 			cairo_move_to(
 			    cr,
-			    f->x + (f->max_duration / 50) * percentage2 *
+			    f->x + (f->max_duration / 20) * percentage2 *
 			               cos(f->angles[i]),
-			    f->y + (f->max_duration / 50) * percentage2 *
+			    f->y + (f->max_duration / 20) * percentage2 *
 			               sin(f->angles[i]));
 			cairo_line_to(
 			    cr,
-			    f->x + (f->max_duration / 50) * percentage1 *
+			    f->x + (f->max_duration / 20) * percentage1 *
 			               cos(f->angles[i]),
-			    f->y + (f->max_duration / 50) * percentage1 *
+			    f->y + (f->max_duration / 20) * percentage1 *
 			               sin(f->angles[i]));
 			cairo_stroke(cr);
 		}
