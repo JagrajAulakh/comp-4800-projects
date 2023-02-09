@@ -13,19 +13,25 @@ struct node {
 
 struct queue {
 	struct node *head;
+	int lock;
 };
 
 Queue *queue_new() {
 	Queue *q = (Queue *)malloc(sizeof(Queue));
 	q->head = NULL;
+	q->lock = 0;
 	return q;
 }
 
 void queue_add(Queue *q, Firework *f) {
+	while (q->lock) {
+	}
+	q->lock = 1;
 	if (q->head == NULL) {
 		q->head = (Node *)malloc(sizeof(Node));
 		q->head->firework = f;
 		q->head->next = NULL;
+		q->lock = 0;
 		return;
 	}
 
@@ -37,9 +43,13 @@ void queue_add(Queue *q, Firework *f) {
 	tmp->next = (Node *)malloc(sizeof(Node));
 	tmp->next->firework = f;
 	tmp->next->next = NULL;
+	q->lock = 0;
 }
 
 Firework *queue_pop(Queue *q) {
+	while (q->lock) {
+	}
+	q->lock = 1;
 	if (q->head == NULL) {
 		return NULL;
 	}
@@ -48,7 +58,40 @@ Firework *queue_pop(Queue *q) {
 
 	Firework *f = tmp->firework;
 	free(tmp);
+	q->lock = 0;
 	return f;
+}
+
+void queue_delete(Queue *q, Firework *f) {
+	while (q->lock) {
+	}
+
+	if (!q->head) return;
+	q->lock = 1;
+	if (q->head->firework == f) {
+		Node *toFree = q->head;
+		q->head = toFree->next;
+		free(toFree);
+		q->lock = 0;
+		return;
+	}
+
+	Node *tmp = q->head, *toFree;
+	while (1) {
+		if (tmp->next && f == tmp->next->firework) {
+			toFree = tmp->next;
+			tmp->next = tmp->next->next;
+			free(toFree);
+			break;
+		}
+
+		tmp = tmp->next;
+		if (!tmp) {
+			break;
+		}
+	}
+
+	q->lock = 0;
 }
 
 void queue_print(Queue *q) {
@@ -70,6 +113,20 @@ void queue_print(Queue *q) {
 	printf("\b\b}\n");
 }
 
+int queue_size(Queue *q) {
+	if (!q->head) return 0;
+
+	int size = 0;
+	Node *tmp = q->head;
+	while (1) {
+		if (!tmp) break;
+		size++;
+		tmp = tmp->next;
+	}
+
+	return size;
+}
+
 Node *queue_get_head(Queue *q) { return q->head; }
 
 Node *node_get_next(Node *n) {
@@ -78,6 +135,8 @@ Node *node_get_next(Node *n) {
 }
 
 Firework *node_get_firework(Node *n) { return n->firework; }
+
+int queue_get_lock(Queue *q) { return q->lock; }
 
 // int main() {
 // 	Queue *q = queue_new();

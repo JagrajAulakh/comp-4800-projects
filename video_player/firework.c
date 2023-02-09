@@ -5,14 +5,17 @@
 #include <pthread.h>
 #include <stdlib.h>
 
+#include "queue.h"
+
 struct firework {
 	GTimer *timers[20];
 	int x, y, num_of_angles;
 	double r, g, b, angles[20];
 	int max_duration;
+	Queue *q;
 };
 
-Firework *firework_new(int x, int y) {
+Firework *firework_new(Queue *q, int x, int y) {
 	Firework *f = (Firework *)malloc(sizeof(Firework));
 
 	f->x = x;
@@ -31,6 +34,7 @@ Firework *firework_new(int x, int y) {
 	f->timers[num_of_angles] = NULL;
 	f->angles[num_of_angles] = -1;
 	f->max_duration = rand() % 800 + 800;
+	f->q = q;
 
 	firework_random_color(f);
 	firework_make_thread(f);
@@ -74,7 +78,8 @@ void firework_draw(cairo_t *cr, Firework *f) {
 			double percentage2 =
 			    percentage1 * percentage1 * percentage1;
 
-			// printf("i=%d, percentage1=%.2f, percentage2=%.2f\n", i,
+			// printf("i=%d, percentage1=%.2f, percentage2=%.2f\n",
+			// i,
 			//        percentage1, percentage2);
 			cairo_set_source_rgb(cr, f->r, f->g, f->b);
 			cairo_move_to(
@@ -109,13 +114,14 @@ void *monitor_timer(void *arg) {
 		pthread_exit(NULL);
 	}
 
-	unsigned long elapsed_time = g_timer_elapsed(f->timers[i], NULL);
+	double elapsed_time = g_timer_elapsed(f->timers[i], NULL);
 
 	while ((elapsed_time * 1000) < f->max_duration) {
 		elapsed_time = g_timer_elapsed(f->timers[i], NULL);
 	}
-	// printf("Timer %d has stopped at %d\n", i, f->max_duration);
 	g_timer_stop(f->timers[i]);
+
+	queue_delete(f->q, f);
 
 	pthread_exit(NULL);
 }

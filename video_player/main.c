@@ -64,6 +64,9 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 		}
 		tmp = node_get_next(tmp);
 	}
+
+	printf("Lock=%d, Size=%d\n", queue_get_lock(fireworks),
+	       queue_size(fireworks));
 }
 
 // void *drawing_loop(void *d) {
@@ -84,10 +87,9 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 // }
 
 void click_callback(GtkGestureClick *gesture, int n, double x, double y,
-		gpointer data) {
-	queue_add(fireworks, firework_new((int)x, (int)y));
+                    gpointer data) {
+	queue_add(fireworks, firework_new(fireworks, (int)x, (int)y));
 }
-
 
 void mouse_motion(GtkWidget widget, double x, double y, gpointer data) {
 	mx = (int)x;
@@ -133,7 +135,8 @@ void activate(GtkApplication *app, gpointer user_data) {
 	gtk_widget_add_controller(drawingArea,
 	                          GTK_EVENT_CONTROLLER(mouseClickGesture));
 
-	g_signal_connect(mouseClickGesture, "pressed", G_CALLBACK(click_callback), NULL);
+	g_signal_connect(mouseClickGesture, "pressed",
+	                 G_CALLBACK(click_callback), NULL);
 
 	// ------- EYES -------
 	eyes[0].x = 627;
@@ -153,8 +156,6 @@ void activate(GtkApplication *app, gpointer user_data) {
 
 	// ------- FIREWORK SETUP -------
 	fireworks = queue_new();
-
-	firework = firework_new(100, 100);
 
 	gtk_widget_show(window);
 }
