@@ -9,7 +9,7 @@ struct firework {
 	GTimer *timers[20];
 	int x, y, num_of_angles;
 	double r, g, b, angles[20];
-	int max_duration;
+	int max_durations[20], max_max_duration_index;
 	GQueue *q;
 };
 
@@ -21,17 +21,24 @@ Firework *firework_new(GQueue *q, int x, int y) {
 
 	int num_of_angles = 3 + rand() % 7;
 	f->num_of_angles = num_of_angles;
+	f->max_max_duration_index = 0;
 	for (int i = 0; i < num_of_angles; i++) {
 		f->timers[i] = g_timer_new();
 		g_timer_start(f->timers[i]);
 
 		double angle = (double)(rand() % 10000) / 10000.0 * 2 * M_PI;
 		f->angles[i] = angle;
+		f->max_durations[i] = rand() % 800 + 800;
+
+		f->max_max_duration_index =
+		    f->max_durations[f->max_max_duration_index] <
+		            f->max_durations[i]
+		        ? i
+		        : f->max_max_duration_index;
 	}
 
 	f->timers[num_of_angles] = NULL;
 	f->angles[num_of_angles] = -1;
-	f->max_duration = rand() % 800 + 800;
 	f->q = q;
 
 	firework_random_color(f);
@@ -62,7 +69,7 @@ double *firework_get_angles(Firework *f) { return f->angles; }
 
 double firework_get_percentage(Firework *f, int i) {
 	double elapsed = g_timer_elapsed(f->timers[i], NULL) * 1000;
-	double p = elapsed / (double)f->max_duration;
+	double p = elapsed / (double)f->max_durations[i];
 	return p;
 }
 
@@ -87,15 +94,15 @@ void firework_draw(void *fa, void *cra) {
 			cairo_set_source_rgb(cr, f->r, f->g, f->b);
 			cairo_move_to(
 			    cr,
-			    f->x + (f->max_duration / 20) * percentage2 *
+			    f->x + (f->max_durations[i] / 20) * percentage2 *
 			               cos(f->angles[i]),
-			    f->y + (f->max_duration / 20) * percentage2 *
+			    f->y + (f->max_durations[i] / 20) * percentage2 *
 			               sin(f->angles[i]));
 			cairo_line_to(
 			    cr,
-			    f->x + (f->max_duration / 20) * percentage1 *
+			    f->x + (f->max_durations[i] / 20) * percentage1 *
 			               cos(f->angles[i]),
-			    f->y + (f->max_duration / 20) * percentage1 *
+			    f->y + (f->max_durations[i] / 20) * percentage1 *
 			               sin(f->angles[i]));
 			cairo_stroke(cr);
 		}
@@ -119,12 +126,12 @@ void *monitor_timer(void *arg) {
 
 	double elapsed_time = g_timer_elapsed(f->timers[i], NULL);
 
-	while ((elapsed_time * 1000) < f->max_duration) {
+	while ((elapsed_time * 1000) < f->max_durations[i]) {
 		elapsed_time = g_timer_elapsed(f->timers[i], NULL);
 	}
 	g_timer_stop(f->timers[i]);
 
-	if (i == 0) g_queue_remove(f->q, f);
+	if (i == f->max_max_duration_index) g_queue_remove(f->q, f);
 
 	pthread_exit(NULL);
 }
