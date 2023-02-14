@@ -52,19 +52,6 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 	}
 
 	g_queue_foreach(fireworks, firework_draw, cr);
-	// while (tmp != NULL) {
-	// 	Firework *f = node_get_firework(tmp);
-	//
-	// 	firework_draw(cr, f);
-	//
-	// 	if (!node_get_next(tmp)) {
-	// 		break;
-	// 	}
-	// 	tmp = node_get_next(tmp);
-	// }
-	//
-	// printf("Lock=%d, Size=%d\n", queue_get_lock(fireworks),
-	//        queue_size(fireworks));
 }
 
 void click_callback(GtkGestureClick *gesture, int n, double x, double y,
