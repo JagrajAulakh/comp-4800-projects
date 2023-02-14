@@ -1,3 +1,6 @@
+![preview1](preview1.png)
+![preview2](preview2.png)
+
 # Compiling and running the code
 
 ```bash
@@ -7,15 +10,5 @@ $ make polish
 # -- RUN --
 $ make run
 
-```
-
-# Clean build
-
-If for some reason there's a problem with the compiled binary, call `make clean` before
-building the code:
-
-```bash
-$ make clean  # Cleans bin/
-$ make polish
 ```
 
