@@ -1,12 +1,12 @@
-SOURCE_FILES = ./grayscale.c
-OUTPUT=grayscale.out
+SOURCE_FILES = ./main.c
+OUTPUT=main.out
 
 CFLAGS=`pkg-config --cflags cairo gtk4`
 LIBS=`pkg-config --libs cairo gtk4 libavcodec libavutil libavformat libswscale`
 
-main: $(SOURCE_FILES)
+build: $(SOURCE_FILES)
 	mkdir -p bin/ && \
-	gcc $(CFLAGS) $(LIBS) $(SOURCE_FILES) -o bin/$(OUTPUT)
+	gcc -ggdb $(CFLAGS) $(LIBS) $(SOURCE_FILES) -o bin/$(OUTPUT)
 
 run:
 	bin/$(OUTPUT)
