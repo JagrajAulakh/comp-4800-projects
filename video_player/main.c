@@ -3,10 +3,10 @@
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <pthread.h>
 
 #define CACHE_SIZE 100
 
@@ -33,8 +33,8 @@ void setWidgetCss(GtkWidget *widget, const char *css) {
 static void yuvFrameToRgbFrame(AVFrame *inputFrame, AVFrame *outputFrame) {
 	struct SwsContext *sws_ctx = sws_getContext(
 	    inputFrame->width, inputFrame->height, inputFrame->format,
-	    inputFrame->width, inputFrame->height, AV_PIX_FMT_RGB32, SWS_BICUBIC,
-	    NULL, NULL, NULL);
+	    inputFrame->width, inputFrame->height, AV_PIX_FMT_RGB32,
+	    SWS_BICUBIC, NULL, NULL, NULL);
 
 	// Set the outputFrame's configuration options
 	outputFrame->format = AV_PIX_FMT_RGB32;
@@ -60,12 +60,14 @@ VideoInfo *getVideoInfo(const char *filename) {
 	avformat_open_input(&vi->fmt_ctx, filename, NULL, NULL);
 	avformat_find_stream_info(vi->fmt_ctx, NULL);
 
-	vi->video_stream_index= av_find_best_stream(vi->fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &vi->video_codec, 0);
+	vi->video_stream_index = av_find_best_stream(
+	    vi->fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &vi->video_codec, 0);
 
 	vi->codec_context = avcodec_alloc_context3(vi->video_codec);
 
 	avcodec_parameters_to_context(
-	    vi->codec_context, vi->fmt_ctx->streams[vi->video_stream_index]->codecpar);
+	    vi->codec_context,
+	    vi->fmt_ctx->streams[vi->video_stream_index]->codecpar);
 	avcodec_open2(vi->codec_context, vi->video_codec, NULL);
 	return vi;
 }
@@ -79,7 +81,8 @@ void freeVideoInfo(VideoInfo *vi) {
 void *decode_frames(void *arg) {
 	const char *videoFilename = (char *)arg;
 	VideoInfo *vi = getVideoInfo(videoFilename);
-	printf("Found video stream at index %d, codec is %s\n", vi->video_stream_index, vi->video_codec->name);
+	printf("Found video stream at index %d, codec is %s\n",
+	       vi->video_stream_index, vi->video_codec->name);
 
 	AVPacket *packet = av_packet_alloc();
 
@@ -90,7 +93,8 @@ void *decode_frames(void *arg) {
 		// interested in:
 		if (packet->stream_index == vi->video_stream_index) {
 			// Send the packet to the decoder
-			int result = avcodec_send_packet(vi->codec_context, packet);
+			int result =
+			    avcodec_send_packet(vi->codec_context, packet);
 			// Error in decoding:
 			if (result < 0) {
 				fprintf(stderr, "ERROR DECODING PACKET\n");
@@ -99,8 +103,8 @@ void *decode_frames(void *arg) {
 
 			while (result >= 0) {
 				AVFrame *frame = av_frame_alloc();
-				result =
-				    avcodec_receive_frame(vi->codec_context, frame);
+				result = avcodec_receive_frame(
+				    vi->codec_context, frame);
 				if (result == AVERROR(EAGAIN)) {
 					break;
 				} else if (result == AVERROR_EOF) {
@@ -112,7 +116,12 @@ void *decode_frames(void *arg) {
 
 				// Count how many frames we've seen so far
 				frame_number++;
-				printf("time: %lu, calculated frame: %lu, frame_numer: %d\n", frame->best_effort_timestamp, (frame->best_effort_timestamp/256)+1, frame_number);
+				printf(
+				    "time: %lu, calculated frame: %lu, "
+				    "frame_numer: %d\n",
+				    frame->best_effort_timestamp,
+				    (frame->best_effort_timestamp / 256) + 1,
+				    frame_number);
 
 				// Add decoded frame when safe
 				g_async_queue_lock(frame_cache);
@@ -121,8 +130,10 @@ void *decode_frames(void *arg) {
 
 				while (1) {
 					g_async_queue_lock(frame_cache);
-					if (g_async_queue_length_unlocked(frame_cache) < CACHE_SIZE) {
-						g_async_queue_unlock(frame_cache);
+					if (g_async_queue_length_unlocked(
+					        frame_cache) < CACHE_SIZE) {
+						g_async_queue_unlock(
+						    frame_cache);
 						break;
 					}
 					g_async_queue_unlock(frame_cache);
@@ -137,14 +148,13 @@ void *decode_frames(void *arg) {
 }
 
 AVFrame *prevFrame = NULL, *prevRgbFrame = NULL;
-void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height, gpointer data) {
-
+void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
+          gpointer data) {
 	AVFrame *frame = NULL;
 	g_async_queue_lock(frame_cache);
 	if (g_async_queue_length_unlocked(frame_cache) > 0) {
 		frame = (AVFrame *)g_async_queue_pop_unlocked(frame_cache);
-	}
-	else {
+	} else {
 		frame = NULL;
 	}
 	g_async_queue_unlock(frame_cache);
@@ -168,8 +178,7 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height, gpoin
 		}
 		prevFrame = frame;
 		prevRgbFrame = rgbFrame;
-	}
-	else {
+	} else {
 		cairo_rectangle(cr, 0, 0, width, height);
 		cairo_set_source_rgb(cr, 0, 0, 0);
 		cairo_fill(cr);
@@ -185,11 +194,16 @@ void activate(GtkApplication *app, gpointer data) {
 	char *filename = (char *)data;
 
 	VideoInfo *vi = getVideoInfo(filename);
-	printf("Found video stream at index %d, codec is %s\n", vi->video_stream_index, vi->video_codec->name);
+	printf("Found video stream at index %d, codec is %s\n",
+	       vi->video_stream_index, vi->video_codec->name);
 
-	int framerate = vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.num/vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.den;
-	int videoWidth = vi->codec_context->width, videoHeight = vi->codec_context->height;
-	printf("Dimensions are %dx%d, framerate is %d\n", videoWidth, videoHeight, framerate);
+	int framerate =
+	    vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.num /
+	    vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.den;
+	int videoWidth = vi->codec_context->width,
+	    videoHeight = vi->codec_context->height;
+	printf("Dimensions are %dx%d, framerate is %d\n", videoWidth,
+	       videoHeight, framerate);
 
 	frame_cache = g_async_queue_new();
 
@@ -201,10 +215,12 @@ void activate(GtkApplication *app, gpointer data) {
 	box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 
 	drawingArea = gtk_drawing_area_new();
-	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(drawingArea), draw, NULL, NULL);
+	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(drawingArea), draw,
+	                               NULL, NULL);
 	gtk_widget_set_size_request(drawingArea, videoWidth, videoHeight);
 
-	g_timeout_add(1000/framerate, (GSourceFunc)gtk_widget_queue_draw, drawingArea);
+	g_timeout_add(1000 / framerate, (GSourceFunc)gtk_widget_queue_draw,
+	              drawingArea);
 	makeDecodeThread(filename);
 
 	gtk_box_append(GTK_BOX(box), drawingArea);
@@ -227,7 +243,8 @@ int main(int argc, char **argv) {
 	                          G_APPLICATION_DEFAULT_FLAGS);
 
 	char *newArgv[] = {argv[0]};
-	g_signal_connect(app, "activate", G_CALLBACK(activate), (void *)filename);
+	g_signal_connect(app, "activate", G_CALLBACK(activate),
+	                 (void *)filename);
 	status = g_application_run(G_APPLICATION(app), 1, newArgv);
 
 	return 0;
