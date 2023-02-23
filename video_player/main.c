@@ -8,8 +8,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+// How many frames to hold in cache. Make sure it more than 2
 #define CACHE_SIZE 100
 
+// Hold video header information
 typedef struct {
 	AVFormatContext *fmt_ctx;
 	AVCodecContext *codec_context;
@@ -18,16 +20,6 @@ typedef struct {
 } VideoInfo;
 
 GAsyncQueue *frame_cache = NULL;
-
-void setWidgetCss(GtkWidget *widget, const char *css) {
-	GtkCssProvider *provider = gtk_css_provider_new();
-	const char *data = css;
-	gtk_css_provider_load_from_data(provider, data, -1);
-	GdkDisplay *displej = gtk_widget_get_display(GTK_WIDGET(widget));
-	gtk_style_context_add_provider_for_display(
-	    displej, GTK_STYLE_PROVIDER(provider),
-	    GTK_STYLE_PROVIDER_PRIORITY_USER);
-}
 
 // Convert a frame in YUV format (or any format) to RGB32 format
 static void yuvFrameToRgbFrame(AVFrame *inputFrame, AVFrame *outputFrame) {
@@ -50,6 +42,8 @@ static void yuvFrameToRgbFrame(AVFrame *inputFrame, AVFrame *outputFrame) {
 	          outputFrame->data, outputFrame->linesize);
 }
 
+// Get header information for a video file. It's up to the caller to free this
+// struct
 VideoInfo *getVideoInfo(const char *filename) {
 	VideoInfo *vi = (VideoInfo *)malloc(sizeof(VideoInfo));
 	vi->fmt_ctx = NULL;
@@ -72,12 +66,14 @@ VideoInfo *getVideoInfo(const char *filename) {
 	return vi;
 }
 
+// User will call this function to free a VideoInfo struct
 void freeVideoInfo(VideoInfo *vi) {
 	avformat_close_input(&vi->fmt_ctx);
 	avcodec_free_context(&vi->codec_context);
 	free(vi);
 }
 
+// Producer thread that will push frames into the cache
 void *decode_frames(void *arg) {
 	const char *videoFilename = (char *)arg;
 	VideoInfo *vi = getVideoInfo(videoFilename);
@@ -128,6 +124,7 @@ void *decode_frames(void *arg) {
 				g_async_queue_push_unlocked(frame_cache, frame);
 				g_async_queue_unlock(frame_cache);
 
+				// Wait until there's room in the cache
 				while (1) {
 					g_async_queue_lock(frame_cache);
 					if (g_async_queue_length_unlocked(
@@ -143,14 +140,17 @@ void *decode_frames(void *arg) {
 	}
 
 	freeVideoInfo(vi);
+	av_packet_free(&packet);
 	puts("Killing decode thread");
 	return 0;
 }
 
+// Consumer thread that will pop and free frames from the cache
 AVFrame *prevFrame = NULL, *prevRgbFrame = NULL;
 void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
           gpointer data) {
 	AVFrame *frame = NULL;
+	// Get a frame from the queue when safe
 	g_async_queue_lock(frame_cache);
 	if (g_async_queue_length_unlocked(frame_cache) > 0) {
 		frame = (AVFrame *)g_async_queue_pop_unlocked(frame_cache);
@@ -159,7 +159,9 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 	}
 	g_async_queue_unlock(frame_cache);
 
+	// If there is indeed a frame in the queue:
 	if (frame != NULL) {
+		// Convert YUV frame data to RGB so cairo can understand
 		AVFrame *rgbFrame = av_frame_alloc();
 		yuvFrameToRgbFrame(frame, rgbFrame);
 		cairo_surface_t *frameSurface =
@@ -167,9 +169,13 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 		        rgbFrame->data[0], CAIRO_FORMAT_ARGB32, rgbFrame->width,
 		        rgbFrame->height, rgbFrame->linesize[0]);
 
+		// Draw frame
 		cairo_set_source_surface(cr, frameSurface, 0, 0);
 		cairo_paint(cr);
 
+		// Free previous frame (cairo_paint still needs current frame
+		// data allocated, so we free the memory for the previously
+		// drawn frame)
 		if (prevFrame != NULL) {
 			av_frame_free(&prevFrame);
 		}
@@ -178,7 +184,7 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 		}
 		prevFrame = frame;
 		prevRgbFrame = rgbFrame;
-	} else {
+	} else {  // If there was no frame in queue, draw black screen
 		cairo_rectangle(cr, 0, 0, width, height);
 		cairo_set_source_rgb(cr, 0, 0, 0);
 		cairo_fill(cr);
@@ -193,10 +199,10 @@ void makeDecodeThread(const char *filename) {
 void activate(GtkApplication *app, gpointer data) {
 	char *filename = (char *)data;
 
+	// Get video information
 	VideoInfo *vi = getVideoInfo(filename);
 	printf("Found video stream at index %d, codec is %s\n",
 	       vi->video_stream_index, vi->video_codec->name);
-
 	int framerate =
 	    vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.num /
 	    vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.den;
@@ -205,22 +211,23 @@ void activate(GtkApplication *app, gpointer data) {
 	printf("Dimensions are %dx%d, framerate is %d\n", videoWidth,
 	       videoHeight, framerate);
 
+	// Create the shared cache for two threads
 	frame_cache = g_async_queue_new();
 
 	GtkWidget *window, *box, *drawingArea;
 
 	window = gtk_application_window_new(app);
 	gtk_window_set_title(GTK_WINDOW(window), "Video player");
-
 	box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-
 	drawingArea = gtk_drawing_area_new();
 	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(drawingArea), draw,
 	                               NULL, NULL);
 	gtk_widget_set_size_request(drawingArea, videoWidth, videoHeight);
 
+	// Setup drawing thread (consumer)
 	g_timeout_add(1000 / framerate, (GSourceFunc)gtk_widget_queue_draw,
 	              drawingArea);
+	// Setup decoding thread (producer)
 	makeDecodeThread(filename);
 
 	gtk_box_append(GTK_BOX(box), drawingArea);
