@@ -19,7 +19,11 @@ typedef struct {
 	int video_stream_index;
 } VideoInfo;
 
-GAsyncQueue *frame_cache = NULL;
+AVFrame *circ_buf[CACHE_SIZE] = {NULL};
+unsigned int w = 0, r = 0;
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t full_cond = PTHREAD_COND_INITIALIZER;
+int producer_done = 0;
 
 // Convert a frame in YUV format (or any format) to RGB32 format
 static void yuvFrameToRgbFrame(AVFrame *inputFrame, AVFrame *outputFrame) {
@@ -112,29 +116,19 @@ void *decode_frames(void *arg) {
 
 				// Count how many frames we've seen so far
 				frame_number++;
-				printf(
-				    "time: %lu, calculated frame: %lu, "
-				    "frame_numer: %d\n",
-				    frame->best_effort_timestamp,
-				    (frame->best_effort_timestamp / 256) + 1,
-				    frame_number);
+				// printf(
+				//     "time: %lu, frame_numer: %d, w=%d,
+				//     r=%d\n", frame->best_effort_timestamp,
+				//     frame_number, w, r);
 
-				// Add decoded frame when safe
-				g_async_queue_lock(frame_cache);
-				g_async_queue_push_unlocked(frame_cache, frame);
-				g_async_queue_unlock(frame_cache);
-
-				// Wait until there's room in the cache
-				while (1) {
-					g_async_queue_lock(frame_cache);
-					if (g_async_queue_length_unlocked(
-					        frame_cache) < CACHE_SIZE) {
-						g_async_queue_unlock(
-						    frame_cache);
-						break;
-					}
-					g_async_queue_unlock(frame_cache);
+				pthread_mutex_lock(&lock);
+				while (w == r + CACHE_SIZE) {
+					pthread_cond_wait(&full_cond, &lock);
 				}
+				circ_buf[(w++) % CACHE_SIZE] = frame;
+
+				pthread_cond_signal(&full_cond);
+				pthread_mutex_unlock(&lock);
 			}
 		}
 	}
@@ -142,6 +136,8 @@ void *decode_frames(void *arg) {
 	freeVideoInfo(vi);
 	av_packet_free(&packet);
 	puts("Killing decode thread");
+	pthread_cond_signal(&full_cond);
+	producer_done = 1;
 	return 0;
 }
 
@@ -150,14 +146,18 @@ AVFrame *prevFrame = NULL, *prevRgbFrame = NULL;
 void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
           gpointer data) {
 	AVFrame *frame = NULL;
-	// Get a frame from the queue when safe
-	g_async_queue_lock(frame_cache);
-	if (g_async_queue_length_unlocked(frame_cache) > 0) {
-		frame = (AVFrame *)g_async_queue_pop_unlocked(frame_cache);
-	} else {
-		frame = NULL;
+
+	pthread_mutex_lock(&lock);
+
+	while (r == w &&
+	       !producer_done) {  // Buffer is empty and producer hasn't stopped
+		pthread_cond_wait(&full_cond, &lock);
 	}
-	g_async_queue_unlock(frame_cache);
+
+	frame = r == w && producer_done ? NULL : circ_buf[(r++) % CACHE_SIZE];
+
+	pthread_cond_signal(&full_cond);
+	pthread_mutex_unlock(&lock);
 
 	// If there is indeed a frame in the queue:
 	if (frame != NULL) {
@@ -201,18 +201,14 @@ void activate(GtkApplication *app, gpointer data) {
 
 	// Get video information
 	VideoInfo *vi = getVideoInfo(filename);
-	printf("Found video stream at index %d, codec is %s\n",
-	       vi->video_stream_index, vi->video_codec->name);
 	int framerate =
 	    vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.num /
 	    vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.den;
 	int videoWidth = vi->codec_context->width,
 	    videoHeight = vi->codec_context->height;
+
 	printf("Dimensions are %dx%d, framerate is %d\n", videoWidth,
 	       videoHeight, framerate);
-
-	// Create the shared cache for two threads
-	frame_cache = g_async_queue_new();
 
 	GtkWidget *window, *box, *drawingArea;
 
