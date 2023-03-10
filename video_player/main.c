@@ -24,6 +24,7 @@ unsigned int w = 0, r = 0;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t full_cond = PTHREAD_COND_INITIALIZER;
 int producer_done = 0;
+unsigned int framerate = 30;
 
 // Convert a frame in YUV format (or any format) to RGB32 format
 static void yuvFrameToRgbFrame(AVFrame *inputFrame, AVFrame *outputFrame) {
@@ -123,6 +124,9 @@ void *decode_frames(void *arg) {
 
 				pthread_mutex_lock(&lock);
 				while (w == r + CACHE_SIZE) {
+					puts(
+					    "[Producer] Buffer is full! "
+					    "Waiting...");
 					pthread_cond_wait(&full_cond, &lock);
 				}
 				circ_buf[(w++) % CACHE_SIZE] = frame;
@@ -151,6 +155,7 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 
 	while (r == w &&
 	       !producer_done) {  // Buffer is empty and producer hasn't stopped
+		puts("[Consumer] Buffer is empty! Waiting...");
 		pthread_cond_wait(&full_cond, &lock);
 	}
 
@@ -201,9 +206,6 @@ void activate(GtkApplication *app, gpointer data) {
 
 	// Get video information
 	VideoInfo *vi = getVideoInfo(filename);
-	int framerate =
-	    vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.num /
-	    vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.den;
 	int videoWidth = vi->codec_context->width,
 	    videoHeight = vi->codec_context->height;
 
@@ -234,11 +236,13 @@ void activate(GtkApplication *app, gpointer data) {
 }
 
 int main(int argc, char **argv) {
-	if (argc < 2) {
-		fprintf(stderr, "\n\nUsage: %s <input file>\n", argv[0]);
+	if (argc < 3) {
+		fprintf(stderr, "\n\nUsage: %s <input file> <framerate>\n",
+		        argv[0]);
 		exit(0);
 	}
 	const char *filename = argv[1];
+	sscanf(argv[2], "%d", &framerate);
 
 	GtkApplication *app;
 	int status;
