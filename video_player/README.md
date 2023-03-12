@@ -1,6 +1,5 @@
-This program takes command line arguments: a video file, an output directory, and an
-optional frame number. It will extract the frame number (or frame 1 of not specified)
-and output 5 different grayscale images to the output directory.
+This program takes command line arguments: a video file, and the video's framerate. It
+will decode and output the video's frames in two separate threads.
 
 # Compiling and running the code
 
@@ -9,10 +8,12 @@ and output 5 different grayscale images to the output directory.
 $ make
 
 # -- RUN --
-$ bin/grayscale.out path/to/video outputdir frame
+$ bin/a4.out path/to/video framerate
 
 # example
-$ bin/grayscale.out ./sample.mp4 out 20
+$ bin/a4.out ./sample_no_audio.mp4 60
 
 ```
 
+I have included and sample video file that I used for testing. My program works _for
+sure_ with the included sample video.

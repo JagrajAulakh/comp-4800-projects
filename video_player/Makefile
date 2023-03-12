@@ -1,5 +1,5 @@
-SOURCE_FILES = ./main.c
-OUTPUT=main.out
+SOURCE_FILES = ./a4.c
+OUTPUT=a4.out
 
 CFLAGS=`pkg-config --cflags cairo gtk4`
 LIBS=`pkg-config --libs cairo gtk4 libavcodec libavutil libavformat libswscale`
