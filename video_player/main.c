@@ -19,11 +19,17 @@ typedef struct {
 	int video_stream_index;
 } VideoInfo;
 
+// Shared circular buffer
 AVFrame *circ_buf[CACHE_SIZE] = {NULL};
+// Read and write pointers
 unsigned int w = 0, r = 0;
+// Initialize mutex lock for thread synchronization
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+// Initialize pthread_cond_t. Acts like a channel for thread sleeping/waking
 pthread_cond_t full_cond = PTHREAD_COND_INITIALIZER;
+// Flag that determines when the video has reached the end
 int producer_done = 0;
+// Framerate at which the video is rendered at
 unsigned int framerate = 30;
 
 // Convert a frame in YUV format (or any format) to RGB32 format
@@ -81,6 +87,8 @@ void freeVideoInfo(VideoInfo *vi) {
 // Producer thread that will push frames into the cache
 void *decode_frames(void *arg) {
 	const char *videoFilename = (char *)arg;
+
+	// Get video information
 	VideoInfo *vi = getVideoInfo(videoFilename);
 	printf("Found video stream at index %d, codec is %s\n",
 	       vi->video_stream_index, vi->video_codec->name);
@@ -103,6 +111,7 @@ void *decode_frames(void *arg) {
 			}
 
 			while (result >= 0) {
+				// Allocate AVFrame to store decoded frame
 				AVFrame *frame = av_frame_alloc();
 				result = avcodec_receive_frame(
 				    vi->codec_context, frame);
@@ -115,32 +124,40 @@ void *decode_frames(void *arg) {
 					return 0;
 				}
 
-				// Count how many frames we've seen so far
 				frame_number++;
-				// printf(
-				//     "time: %lu, frame_numer: %d, w=%d,
-				//     r=%d\n", frame->best_effort_timestamp,
-				//     frame_number, w, r);
 
+				// The is the sensitive section
+
+				// Lock this section. Other threads CANNOT
+				// interfere during this section
 				pthread_mutex_lock(&lock);
+
+				// Wait until buffer is not full
 				while (w == r + CACHE_SIZE) {
 					puts(
 					    "[Producer] Buffer is full! "
 					    "Waiting...");
 					pthread_cond_wait(&full_cond, &lock);
 				}
+				// Push a frame into the buffer
 				circ_buf[(w++) % CACHE_SIZE] = frame;
 
+				// Signal consumer that it's safe to read
 				pthread_cond_signal(&full_cond);
+				// Let go of the lock. Critical section is done
 				pthread_mutex_unlock(&lock);
 			}
 		}
 	}
 
+	// Free resources related to video
 	freeVideoInfo(vi);
 	av_packet_free(&packet);
+
+	// Signal the consumer to keep reading
 	puts("Killing decode thread");
 	pthread_cond_signal(&full_cond);
+	// Set flag to indicate that video has ended
 	producer_done = 1;
 	return 0;
 }
@@ -151,17 +168,22 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
           gpointer data) {
 	AVFrame *frame = NULL;
 
+	// Lock this section. Other threads CANNOT interfere during this section
 	pthread_mutex_lock(&lock);
-
+	// Wait until buffer is not empty (there's actually data to read)
 	while (r == w &&
 	       !producer_done) {  // Buffer is empty and producer hasn't stopped
 		puts("[Consumer] Buffer is empty! Waiting...");
 		pthread_cond_wait(&full_cond, &lock);
 	}
 
+	// Retrieve a frame from the buffer, or NULL if video is done and buffer
+	// is empty
 	frame = r == w && producer_done ? NULL : circ_buf[(r++) % CACHE_SIZE];
 
+	// Signal producer that it's safe to write to the buffer
 	pthread_cond_signal(&full_cond);
+	// Let go of the lock. Critical section is done
 	pthread_mutex_unlock(&lock);
 
 	// If there is indeed a frame in the queue:
@@ -187,15 +209,19 @@ void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
 		if (prevRgbFrame != NULL) {
 			av_frame_free(&prevRgbFrame);
 		}
+
+		// Set the current frame that was drawn as the previous frame
+		// for the next draw iteration
 		prevFrame = frame;
 		prevRgbFrame = rgbFrame;
-	} else {  // If there was no frame in queue, draw black screen
+	} else {  // If there was no frame in buffer, draw black screen
 		cairo_rectangle(cr, 0, 0, width, height);
 		cairo_set_source_rgb(cr, 0, 0, 0);
 		cairo_fill(cr);
 	}
 }
 
+// Makes the producer thread
 void makeDecodeThread(const char *filename) {
 	pthread_t tid;
 	pthread_create(&tid, NULL, decode_frames, (void *)filename);
@@ -220,6 +246,7 @@ void activate(GtkApplication *app, gpointer data) {
 	drawingArea = gtk_drawing_area_new();
 	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(drawingArea), draw,
 	                               NULL, NULL);
+	// Resize window to dimensions of the video
 	gtk_widget_set_size_request(drawingArea, videoWidth, videoHeight);
 
 	// Setup drawing thread (consumer)
