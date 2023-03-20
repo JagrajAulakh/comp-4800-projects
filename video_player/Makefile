@@ -1,8 +1,8 @@
 SOURCE_FILES = ./main.c
 OUTPUT=main.out
 
-CFLAGS=`pkg-config --cflags cairo gtk4`
-LIBS=`pkg-config --libs cairo gtk4`
+CFLAGS=-ggdb `pkg-config --cflags libpulse`
+LIBS=`pkg-config --libs libpulse`
 
 main: $(SOURCE_FILES)
 	mkdir -p bin/ && \
