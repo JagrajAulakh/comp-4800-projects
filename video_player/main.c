@@ -5,7 +5,36 @@
 #include <pulse/volume.h>
 #include <stdio.h>
 
-static int freq = 440;
+#define C4 261.63
+#define Cs4 277.18
+#define D4 293.66
+#define Ds4 311.13
+#define E4 329.63
+#define F4 349.23
+#define Fs4 369.99
+#define G4 392.00
+#define Gs4 415.30
+#define A4 440.00
+#define As4 466.16
+#define B4 493.88
+#define C5 523.25
+#define Cs5 554.37
+#define D5 587.33
+#define Ds5 622.25
+#define E5 659.25
+#define F5 698.46
+#define Fs5 739.99
+#define G5 783.99
+#define Gs5 830.61
+#define A5 880.00
+#define As5 932.33
+#define B5 987.77
+
+const double song[] = {
+    C4, Cs4, D4, Ds4, E4, F4, Fs4, G4, Gs4, A4, As4, B4,
+    C5, Cs5, D5, Ds5, E5, F5, Fs5, G5, Gs5, A5, As5, B5,
+};
+static int si = 0;
 
 pa_stream *stream;
 pa_context *pc;
@@ -28,9 +57,10 @@ void state_callback(pa_context *c, void *userdata) {
 }
 
 void writeSoundData(int8_t *buf, size_t length, double freq) {
-	for (int i = 0; i <= length / 2; i += 2) {
-		double sample_d =
-		    0.2 * SHRT_MAX * sin(2 * M_PI * freq * (double)i / 44100.0);
+	for (int i = 0; i < length; i += 2) {
+		double sample_d = 0.1 * SHRT_MAX *
+		                  sin((2 * M_PI * freq * (double)i) / 44100.0);
+
 		int16_t sample = sample_d;
 		buf[i] = sample & 0xff;
 		buf[i + 1] = (sample >> 8) & 0xff;
@@ -40,8 +70,9 @@ void writeSoundData(int8_t *buf, size_t length, double freq) {
 void write_callback(pa_stream *s, size_t length, void *userdata) {
 	int8_t *buf = userdata;
 
-	pa_stream_write(s, buf, length, NULL, 0, PA_SEEK_RELATIVE);
-	// writeSoundData(buf, 4000, freq++);
+	pa_stream_write(s, buf, 44100, NULL, 0, PA_SEEK_RELATIVE);
+	writeSoundData(buf, 44100, song[si++]);
+	si = si % (sizeof(song) / sizeof(song[0]));
 }
 
 int main(int argc, char *argv[]) {
@@ -66,8 +97,8 @@ int main(int argc, char *argv[]) {
 	spec.rate = 44100;
 	spec.channels = 1;
 
-	int8_t buf[30000];
-	writeSoundData(buf, 30000, freq);
+	int8_t buf[44100];
+	writeSoundData(buf, 44100, 1);
 
 	// Create a new playback stream
 	if (!(stream = pa_stream_new(pc, "playback", &spec, NULL))) {
