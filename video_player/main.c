@@ -1,8 +1,5 @@
 #include <math.h>
-#include <pulse/context.h>
-#include <pulse/mainloop.h>
-#include <pulse/stream.h>
-#include <pulse/volume.h>
+#include <pulse/pulseaudio.h>
 #include <stdio.h>
 
 #define RR 1
@@ -138,10 +135,26 @@ void writeSoundData(int8_t *buf, size_t length, double freq) {
 void write_callback(pa_stream *s, size_t length, void *userdata) {
 	int8_t *buf = userdata;
 
-	pa_stream_write(s, buf, 44100, NULL, 0, PA_SEEK_RELATIVE);
+	pa_stream_write(s, buf, 20000, NULL, 0, PA_SEEK_RELATIVE);
 	writeSoundData(buf, 44100, song[si++]);
 	si = si % (sizeof(song) / sizeof(song[0]));
 }
+
+void sink_info_callback(pa_context *pc, pa_sink_info *info, int eol, void *userdata) {
+	if (info) {
+		pa_cvolume *v = &info->volume;
+		pa_volume_t volume = pa_cvolume_avg(v);
+		double percentage = (100* (double)volume / (double)PA_VOLUME_NORM);
+		printf("Device name: %s\n", info->name);
+		printf("Volume: %.2f%%\n", percentage);
+		printf("Sample rate: %dHz\n", info->sample_spec.rate);
+	}
+
+	if (eol) {
+		return;
+	}
+}
+
 
 int main(int argc, char *argv[]) {
 	m = pa_mainloop_new();
@@ -160,6 +173,8 @@ int main(int argc, char *argv[]) {
 	while (pa_ready == 0) {
 		pa_mainloop_iterate(m, 1, NULL);
 	}
+
+	pa_context_get_sink_info_list(pc, (void *)sink_info_callback, NULL);
 
 	spec.format = PA_SAMPLE_S16LE;
 	spec.rate = 44100;
