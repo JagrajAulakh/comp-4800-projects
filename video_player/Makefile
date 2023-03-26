@@ -6,7 +6,7 @@ LIBS=`pkg-config --libs libpulse` -lm
 
 main: $(SOURCE_FILES)
 	mkdir -p bin/ && \
-	gcc $(CFLAGS) $(LIBS) $(SOURCE_FILES) -o bin/$(OUTPUT)
+	gcc $(CFLAGS) $(SOURCE_FILES) $(LIBS) -o bin/$(OUTPUT)
 
 run:
 	bin/$(OUTPUT)
