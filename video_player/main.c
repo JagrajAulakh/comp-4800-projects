@@ -5,6 +5,7 @@
 #include <pulse/volume.h>
 #include <stdio.h>
 
+#define RR 1
 #define C4 261.63
 #define Cs4 277.18
 #define D4 293.66
@@ -30,9 +31,76 @@
 #define As5 932.33
 #define B5 987.77
 
+// Tequilla
 const double song[] = {
-    C4, Cs4, D4, Ds4, E4, F4, Fs4, G4, Gs4, A4, As4, B4,
-    C5, Cs5, D5, Ds5, E5, F5, Fs5, G5, Gs5, A5, As5, B5,
+	D4, D4,
+	G4, G4,
+	G4, F4, 
+	A4, A4, 
+	F4, G4, 
+	RR, D4,
+	RR, RR,
+	RR, RR,
+	RR, D4,
+	G4, G4,
+	G4, F4,
+	A4, F4,
+	RR, G4,
+	RR, RR,
+	RR, RR,
+	RR, RR,
+	RR, D4,
+	G4, RR,
+	G4, F4,
+	A4, A4,
+	F4, G4,
+	RR, D4,
+	RR, RR,
+	RR, RR,
+	RR, D4,
+	G4, RR,
+	G4, F4,
+	A4, F4,
+	RR, G4,
+	RR, RR,
+	RR, RR,
+	RR, D4,
+	E4, G4,
+	As4, As4,
+	As4, As4,
+	As4, As4,
+	As4, As4,
+	G4, G4,
+	RR, G4,
+	RR, D4,
+	E4, G4,
+	As4, As4,
+	As4, As4,
+	As4, As4,
+	As4, As4,
+	G4, G4,
+	RR, G4,
+	RR, D4,
+	E4, G4,
+	As4, As4,
+	As4, As4,
+	As4, As4,
+	As4, As4,
+	G4, G4,
+	G4, G4,
+	G4, G4,
+	G4, G4,
+	A4, A4,
+	A4, A4,
+	A4, A4,
+	RR, D5,
+	RR, RR,
+	RR, D4,
+	D4, D4,
+	RR, RR,
+	RR, RR,
+	RR, RR,
+	RR, RR,
 };
 static int si = 0;
 
