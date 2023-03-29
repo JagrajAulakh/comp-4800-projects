@@ -64,8 +64,6 @@ VideoInfo *getVideoInfo(const char *filename) {
 	    vi->audio_codec_context,
 	    vi->fmt_ctx->streams[vi->audio_stream_index]->codecpar);
 	avcodec_open2(vi->audio_codec_context, vi->audio_codec, NULL);
-	printf("%s\n",
-	       av_get_sample_fmt_name(vi->audio_codec_context->sample_fmt));
 	return vi;
 }
 
@@ -85,9 +83,9 @@ void *decode_frames(void *arg) {
 	VideoInfo *vi = getVideoInfo(videoFilename);
 	printf(
 	    "Found video stream at index %d, audio stream at index %d, video "
-	    "codec is %s, audio codec is %s\n",
+	    "codec is %s, audio codec is %s, sample rate is %d\n",
 	    vi->video_stream_index, vi->audio_stream_index,
-	    vi->video_codec->name, vi->audio_codec->name);
+	    vi->video_codec->name, vi->audio_codec->name,vi->audio_codec_context->sample_rate);
 
 	AVPacket *packet = av_packet_alloc();
 
@@ -179,17 +177,6 @@ void state_callback(pa_context *c, void *userdata) {
 	}
 }
 
-void writeSoundData(int8_t *buf, size_t length, double freq) {
-	for (int i = 0; i < length; i += 2) {
-		double sample_d = 0.1 * SHRT_MAX *
-		                  sin((2 * M_PI * freq * (double)i) / 44100.0);
-
-		int16_t sample = sample_d;
-		buf[i] = sample & 0xff;
-		buf[i + 1] = (sample >> 8) & 0xff;
-	}
-}
-
 void write_callback(pa_stream *s, size_t length, void *userdata) {
 	printf("writing frame %d\n", r);
 
@@ -205,12 +192,7 @@ void write_callback(pa_stream *s, size_t length, void *userdata) {
 	pthread_cond_signal(&full_cond);
 	pthread_mutex_unlock(&lock);
 
-	uint8_t buf[frame->nb_samples * 2];
-	for (int i = 0; i < frame->nb_samples * 2; i += 2) {
-		buf[i] = 0xff & frame->data[0][i];
-		buf[i + 1] = 0x00;
-	}
-	pa_stream_write(s, buf, frame->nb_samples * 2, NULL, 0,
+	pa_stream_write(s, frame->buf[0], frame->linesize[0], NULL, 0,
 	                PA_SEEK_RELATIVE);
 	r++;
 }
@@ -252,12 +234,11 @@ int setupPulse() {
 
 	pa_context_get_sink_info_list(pc, (void *)sink_info_callback, NULL);
 
-	spec.format = PA_SAMPLE_S32LE;
+	spec.format = PA_SAMPLE_FLOAT32LE;
 	spec.rate = 44100;
 	spec.channels = 1;
 
 	int8_t buf[44100];
-	writeSoundData(buf, 44100, 1);
 
 	// Create a new playback stream
 	if (!(stream = pa_stream_new(pc, "playback", &spec, NULL))) {
