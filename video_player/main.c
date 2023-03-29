@@ -250,10 +250,10 @@ int setupPulse() {
 
 	pa_buffer_attr bufattr;
 	bufattr.fragsize = (uint32_t)-1;
-	bufattr.maxlength = 8192;
+	bufattr.maxlength = 8192*2;
 	bufattr.minreq = 0;
 	bufattr.prebuf = 0;
-	bufattr.tlength = 8192;
+	bufattr.tlength = 8192*2;
 
 	pa_stream_connect_playback(stream, NULL, &bufattr,
 	                           PA_STREAM_INTERPOLATE_TIMING |
