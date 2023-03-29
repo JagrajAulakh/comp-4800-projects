@@ -191,7 +191,6 @@ void write_callback(pa_stream *s, size_t length, void *userdata) {
 	pthread_mutex_unlock(&lock);
 
 	if (frame) {
-		printf("%d\n", frame->linesize[0]);
 		pa_stream_write(s, frame->extended_data[0], frame->nb_samples*4,
 		                NULL, 0, PA_SEEK_RELATIVE);
 		av_frame_free(&frame);
