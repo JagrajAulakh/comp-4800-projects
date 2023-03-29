@@ -61,6 +61,12 @@ void sink_info_callback(pa_context *pc, pa_sink_info *info, int eol, void *userd
 
 
 int main(int argc, char *argv[]) {
+
+	if (argc != 2) {
+		puts("Please give an video file");
+		printf("Example: %s file.mp4", argv[0]);
+	}
+
 	m = pa_mainloop_new();
 	pa_mainloop_api *mainloop_api = pa_mainloop_get_api(m);
 	pc = pa_context_new(mainloop_api, "playback");
