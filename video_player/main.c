@@ -1,11 +1,13 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/samplefmt.h>
+#include <libswresample/swresample.h>
 #include <math.h>
 #include <pthread.h>
 #include <pulse/pulseaudio.h>
 #include <stdio.h>
 
-#define CACHE_SIZE 3
+#define CACHE_SIZE 100
 
 // Hold video header information
 typedef struct {
@@ -85,7 +87,8 @@ void *decode_frames(void *arg) {
 	    "Found video stream at index %d, audio stream at index %d, video "
 	    "codec is %s, audio codec is %s, sample rate is %d\n",
 	    vi->video_stream_index, vi->audio_stream_index,
-	    vi->video_codec->name, vi->audio_codec->name,vi->audio_codec_context->sample_rate);
+	    vi->video_codec->name, vi->audio_codec->name,
+	    vi->audio_codec_context->sample_rate);
 
 	AVPacket *packet = av_packet_alloc();
 
@@ -115,14 +118,12 @@ void *decode_frames(void *arg) {
 					printf("%d ERROR EOF\n", frame_number);
 					break;
 				} else if (result < 0) {
+					fprintf(stderr,
+					        "Failed to receive frame from "
+					        "decoder: %s\n",
+					        av_err2str(result));
 					return 0;
 				}
-
-				// for (unsigned int i = 0; i <
-				// frame->nb_samples; i++) { 	printf("%d ",
-				// frame->data[0][i]);
-				// }
-				// puts("");
 
 				frame_number++;
 
@@ -134,11 +135,9 @@ void *decode_frames(void *arg) {
 
 				// Wait until buffer is not full
 				while (w == r + CACHE_SIZE) {
-					puts(
-					    "[Producer] Buffer is full! "
-					    "Waiting...");
 					pthread_cond_wait(&full_cond, &lock);
 				}
+
 				// Push a frame into the buffer
 				circ_buf[(w++) % CACHE_SIZE] = frame;
 
@@ -178,23 +177,28 @@ void state_callback(pa_context *c, void *userdata) {
 }
 
 void write_callback(pa_stream *s, size_t length, void *userdata) {
-	printf("writing frame %d\n", r);
+	AVFrame *frame = NULL;
 
 	pthread_mutex_lock(&lock);
 	while (r == w &&
 	       !producer_done) {  // Buffer is empty and producer hasn't stopped
-		puts("[Consumer] Buffer is empty! Waiting...");
 		pthread_cond_wait(&full_cond, &lock);
 	}
 
-	AVFrame *frame = circ_buf[(r++) % CACHE_SIZE];
+	frame = r == w && producer_done ? NULL : circ_buf[(r++) % CACHE_SIZE];
 
 	pthread_cond_signal(&full_cond);
 	pthread_mutex_unlock(&lock);
 
-	pa_stream_write(s, frame->buf[0], frame->linesize[0], NULL, 0,
-	                PA_SEEK_RELATIVE);
-	r++;
+	if (frame) {
+		pa_stream_write(s, frame->extended_data[0], frame->linesize[0],
+		                NULL, 0, PA_SEEK_RELATIVE);
+		av_frame_free(&frame);
+	}
+
+	if (r == w && producer_done) {
+		pa_mainloop_quit(m, 0);
+	}
 }
 
 void sink_info_callback(pa_context *pc, pa_sink_info *info, int eol,
@@ -235,10 +239,8 @@ int setupPulse() {
 	pa_context_get_sink_info_list(pc, (void *)sink_info_callback, NULL);
 
 	spec.format = PA_SAMPLE_FLOAT32LE;
-	spec.rate = 44100;
+	spec.rate = 48000;
 	spec.channels = 1;
-
-	int8_t buf[44100];
 
 	// Create a new playback stream
 	if (!(stream = pa_stream_new(pc, "playback", &spec, NULL))) {
@@ -248,10 +250,10 @@ int setupPulse() {
 
 	pa_buffer_attr bufattr;
 	bufattr.fragsize = (uint32_t)-1;
-	bufattr.maxlength = 30000;
+	bufattr.maxlength = 8192;
 	bufattr.minreq = 0;
-	bufattr.prebuf = 100;
-	bufattr.tlength = 30000;
+	bufattr.prebuf = 0;
+	bufattr.tlength = 8192;
 
 	pa_stream_connect_playback(stream, NULL, &bufattr,
 	                           PA_STREAM_INTERPOLATE_TIMING |
@@ -286,6 +288,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (pa_mainloop_run(m, NULL)) {
-		fprintf(stderr, "pa_mainloop_run() failed.\n");
+		fprintf(stderr, "pa_mainloop has quit.\n");
 	}
 }
