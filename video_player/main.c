@@ -1,105 +1,9 @@
 #include <math.h>
 #include <pulse/pulseaudio.h>
 #include <stdio.h>
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
 
-#define RR 1
-#define C4 261.63
-#define Cs4 277.18
-#define D4 293.66
-#define Ds4 311.13
-#define E4 329.63
-#define F4 349.23
-#define Fs4 369.99
-#define G4 392.00
-#define Gs4 415.30
-#define A4 440.00
-#define As4 466.16
-#define B4 493.88
-#define C5 523.25
-#define Cs5 554.37
-#define D5 587.33
-#define Ds5 622.25
-#define E5 659.25
-#define F5 698.46
-#define Fs5 739.99
-#define G5 783.99
-#define Gs5 830.61
-#define A5 880.00
-#define As5 932.33
-#define B5 987.77
-
-// Tequilla
-const double song[] = {
-	D4, D4,
-	G4, G4,
-	G4, F4, 
-	A4, A4, 
-	F4, G4, 
-	RR, D4,
-	RR, RR,
-	RR, RR,
-	RR, D4,
-	G4, G4,
-	G4, F4,
-	A4, F4,
-	RR, G4,
-	RR, RR,
-	RR, RR,
-	RR, RR,
-	RR, D4,
-	G4, RR,
-	G4, F4,
-	A4, A4,
-	F4, G4,
-	RR, D4,
-	RR, RR,
-	RR, RR,
-	RR, D4,
-	G4, RR,
-	G4, F4,
-	A4, F4,
-	RR, G4,
-	RR, RR,
-	RR, RR,
-	RR, D4,
-	E4, G4,
-	As4, As4,
-	As4, As4,
-	As4, As4,
-	As4, As4,
-	G4, G4,
-	RR, G4,
-	RR, D4,
-	E4, G4,
-	As4, As4,
-	As4, As4,
-	As4, As4,
-	As4, As4,
-	G4, G4,
-	RR, G4,
-	RR, D4,
-	E4, G4,
-	As4, As4,
-	As4, As4,
-	As4, As4,
-	As4, As4,
-	G4, G4,
-	G4, G4,
-	G4, G4,
-	G4, G4,
-	A4, A4,
-	A4, A4,
-	A4, A4,
-	RR, D5,
-	RR, RR,
-	RR, D4,
-	D4, D4,
-	RR, RR,
-	RR, RR,
-	RR, RR,
-	RR, RR,
-};
-static int si = 0;
 
 pa_stream *stream;
 pa_context *pc;
@@ -136,8 +40,8 @@ void write_callback(pa_stream *s, size_t length, void *userdata) {
 	int8_t *buf = userdata;
 
 	pa_stream_write(s, buf, 20000, NULL, 0, PA_SEEK_RELATIVE);
-	writeSoundData(buf, 44100, song[si++]);
-	si = si % (sizeof(song) / sizeof(song[0]));
+	// writeSoundData(buf, 44100, song[si++]);
+	// si = si % (sizeof(song) / sizeof(song[0]));
 }
 
 void sink_info_callback(pa_context *pc, pa_sink_info *info, int eol, void *userdata) {
