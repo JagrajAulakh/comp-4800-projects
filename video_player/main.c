@@ -20,14 +20,13 @@ typedef struct {
 	int audio_stream_index;
 } VideoInfo;
 
-// Shared circular buffer
-AVFrame *circ_buf[CACHE_SIZE] = {NULL};
+AVFrame *abuf[CACHE_SIZE] = {NULL};
 // Read and write pointers
-unsigned int w = 0, r = 0;
+unsigned int aw = 0, ar = 0;
 // Initialize mutex lock for thread synchronization
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t alock = PTHREAD_MUTEX_INITIALIZER;
 // Initialize pthread_cond_t. Acts like a channel for thread sleeping/waking
-pthread_cond_t full_cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t acond = PTHREAD_COND_INITIALIZER;
 // Flag that determines when the video has reached the end
 int producer_done = 0;
 
@@ -131,20 +130,20 @@ void *decode_frames(void *arg) {
 
 				// Lock this section. Other threads CANNOT
 				// interfere during this section
-				pthread_mutex_lock(&lock);
+				pthread_mutex_lock(&alock);
 
 				// Wait until buffer is not full
-				while (w == r + CACHE_SIZE) {
-					pthread_cond_wait(&full_cond, &lock);
+				while (aw == ar + CACHE_SIZE) {
+					pthread_cond_wait(&acond, &alock);
 				}
 
 				// Push a frame into the buffer
-				circ_buf[(w++) % CACHE_SIZE] = frame;
+				abuf[(aw++) % CACHE_SIZE] = frame;
 
 				// Signal consumer that it's safe to read
-				pthread_cond_signal(&full_cond);
+				pthread_cond_signal(&acond);
 				// Let go of the lock. Critical section is done
-				pthread_mutex_unlock(&lock);
+				pthread_mutex_unlock(&alock);
 			}
 		}
 	}
@@ -155,7 +154,7 @@ void *decode_frames(void *arg) {
 
 	// Signal the consumer to keep reading
 	puts("Killing decode thread");
-	pthread_cond_signal(&full_cond);
+	pthread_cond_signal(&acond);
 	// Set flag to indicate that video has ended
 	producer_done = 1;
 	return 0;
@@ -179,24 +178,24 @@ void state_callback(pa_context *c, void *userdata) {
 void write_callback(pa_stream *s, size_t length, void *userdata) {
 	AVFrame *frame = NULL;
 
-	pthread_mutex_lock(&lock);
-	while (r == w &&
+	pthread_mutex_lock(&alock);
+	while (ar == aw &&
 	       !producer_done) {  // Buffer is empty and producer hasn't stopped
-		pthread_cond_wait(&full_cond, &lock);
+		pthread_cond_wait(&acond, &alock);
 	}
 
-	frame = r == w && producer_done ? NULL : circ_buf[(r++) % CACHE_SIZE];
+	frame = ar == aw && producer_done ? NULL : abuf[(ar++) % CACHE_SIZE];
 
-	pthread_cond_signal(&full_cond);
-	pthread_mutex_unlock(&lock);
+	pthread_cond_signal(&acond);
+	pthread_mutex_unlock(&alock);
 
 	if (frame) {
-		pa_stream_write(s, frame->extended_data[0], frame->nb_samples*4,
+		pa_stream_write(s, frame->extended_data[0], frame->linesize[0],
 		                NULL, 0, PA_SEEK_RELATIVE);
 		av_frame_free(&frame);
 	}
 
-	if (r == w && producer_done) {
+	if (ar == aw && producer_done) {
 		pa_mainloop_quit(m, 0);
 	}
 }
@@ -250,10 +249,10 @@ int setupPulse() {
 
 	pa_buffer_attr bufattr;
 	bufattr.fragsize = (uint32_t)-1;
-	bufattr.maxlength = 8192*2;
+	bufattr.maxlength = 8192;
 	bufattr.minreq = 0;
 	bufattr.prebuf = 0;
-	bufattr.tlength = 8192*2;
+	bufattr.tlength = 8192;
 
 	pa_stream_connect_playback(stream, NULL, &bufattr,
 	                           PA_STREAM_INTERPOLATE_TIMING |
