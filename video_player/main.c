@@ -1,7 +1,9 @@
+#include <gtk/gtk.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/samplefmt.h>
 #include <libswresample/swresample.h>
+#include <libswscale/swscale.h>
 #include <math.h>
 #include <pthread.h>
 #include <pulse/pulseaudio.h>
@@ -18,15 +20,18 @@ typedef struct {
 	const AVCodec *audio_codec;
 	int video_stream_index;
 	int audio_stream_index;
+	int framerate, width, height;
 } VideoInfo;
 
-AVFrame *abuf[CACHE_SIZE] = {NULL};
+AVFrame *abuf[CACHE_SIZE] = {NULL}, *vbuf[CACHE_SIZE] = {NULL};
 // Read and write pointers
-unsigned int aw = 0, ar = 0;
+unsigned int aw = 0, ar = 0, vw = 0, vr = 0;
 // Initialize mutex lock for thread synchronization
-pthread_mutex_t alock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t alock = PTHREAD_MUTEX_INITIALIZER,
+                vlock = PTHREAD_MUTEX_INITIALIZER;
 // Initialize pthread_cond_t. Acts like a channel for thread sleeping/waking
-pthread_cond_t acond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t acond = PTHREAD_COND_INITIALIZER,
+               vcond = PTHREAD_COND_INITIALIZER;
 // Flag that determines when the video has reached the end
 int producer_done = 0;
 
@@ -56,6 +61,11 @@ VideoInfo *getVideoInfo(const char *filename) {
 	vi->video_codec_context = avcodec_alloc_context3(vi->video_codec);
 	vi->audio_codec_context = avcodec_alloc_context3(vi->audio_codec);
 
+
+	vi->framerate =
+	    vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.num /
+	    vi->fmt_ctx->streams[vi->video_stream_index]->r_frame_rate.den;
+
 	avcodec_parameters_to_context(
 	    vi->video_codec_context,
 	    vi->fmt_ctx->streams[vi->video_stream_index]->codecpar);
@@ -65,6 +75,9 @@ VideoInfo *getVideoInfo(const char *filename) {
 	    vi->audio_codec_context,
 	    vi->fmt_ctx->streams[vi->audio_stream_index]->codecpar);
 	avcodec_open2(vi->audio_codec_context, vi->audio_codec, NULL);
+
+	vi->width = vi->video_codec_context->width;
+	vi->height = vi->video_codec_context->height;
 	return vi;
 }
 
@@ -76,6 +89,27 @@ void freeVideoInfo(VideoInfo *vi) {
 	free(vi);
 }
 
+// Convert a frame in YUV format (or any format) to RGB32 format
+static void yuvFrameToRgbFrame(AVFrame *inputFrame, AVFrame *outputFrame) {
+	struct SwsContext *sws_ctx = sws_getContext(
+	    inputFrame->width, inputFrame->height, inputFrame->format,
+	    inputFrame->width, inputFrame->height, AV_PIX_FMT_RGB32,
+	    SWS_BICUBIC, NULL, NULL, NULL);
+
+	// Set the outputFrame's configuration options
+	outputFrame->format = AV_PIX_FMT_RGB32;
+	outputFrame->width = inputFrame->width;
+	outputFrame->height = inputFrame->height;
+	// Allocates memory for outputFrame->data, second argument is padding in
+	// bytes
+	av_frame_get_buffer(outputFrame, 32);
+
+	// sws_scale will actually do the conversion
+	sws_scale(sws_ctx, (const uint8_t *const *)inputFrame->data,
+	          inputFrame->linesize, 0, inputFrame->height,
+	          outputFrame->data, outputFrame->linesize);
+}
+
 // Producer thread that will push frames into the cache
 void *decode_frames(void *arg) {
 	const char *videoFilename = (char *)arg;
@@ -84,66 +118,77 @@ void *decode_frames(void *arg) {
 	VideoInfo *vi = getVideoInfo(videoFilename);
 	printf(
 	    "Found video stream at index %d, audio stream at index %d, video "
-	    "codec is %s, audio codec is %s, sample rate is %d\n",
+	    "codec is %s, audio codec is %s, sample rate is %d, framerate is "
+	    "%d\n",
 	    vi->video_stream_index, vi->audio_stream_index,
 	    vi->video_codec->name, vi->audio_codec->name,
-	    vi->audio_codec_context->sample_rate);
+	    vi->audio_codec_context->sample_rate, vi->framerate);
 
 	AVPacket *packet = av_packet_alloc();
 
-	int frame_number = 0;
-	// Read packets from the video file
+	int vcount = 0, acount = 0;
 	while (av_read_frame(vi->fmt_ctx, packet) >= 0) {
-		// If a packet is apart of the video stream index we are
-		// interested in:
+		int result;
+		int is_audio;
 		if (packet->stream_index == vi->audio_stream_index) {
-			// Send the packet to the decoder
-			int result = avcodec_send_packet(
-			    vi->audio_codec_context, packet);
-			// Error in decoding:
-			if (result < 0) {
-				fprintf(stderr, "ERROR DECODING PACKET\n");
+			result = avcodec_send_packet(vi->audio_codec_context,
+			                             packet);
+			is_audio = 1;
+		} else if (packet->stream_index == vi->video_stream_index) {
+			result = avcodec_send_packet(vi->video_codec_context,
+			                             packet);
+			is_audio = 0;
+		} else {
+			continue;
+		}
+
+		if (result < 0) {
+			fprintf(stderr, "ERROR DECODING PACKET\n");
+			return 0;
+		}
+
+		while (result >= 0) {
+			// Allocate AVFrame to store decoded frame
+			AVFrame *frame = av_frame_alloc();
+			if (is_audio) {
+				result = avcodec_receive_frame(
+				    vi->audio_codec_context, frame);
+			} else {
+				result = avcodec_receive_frame(
+				    vi->video_codec_context, frame);
+			}
+			if (result == AVERROR(EAGAIN)) {
+				break;
+			} else if (result == AVERROR_EOF) {
+				break;
+			} else if (result < 0) {
+				fprintf(stderr,
+				        "Failed to receive frame from "
+				        "decoder: %s\n",
+				        av_err2str(result));
 				return 0;
 			}
 
-			while (result >= 0) {
-				// Allocate AVFrame to store decoded frame
-				AVFrame *frame = av_frame_alloc();
-				result = avcodec_receive_frame(
-				    vi->audio_codec_context, frame);
-				if (result == AVERROR(EAGAIN)) {
-					break;
-				} else if (result == AVERROR_EOF) {
-					printf("%d ERROR EOF\n", frame_number);
-					break;
-				} else if (result < 0) {
-					fprintf(stderr,
-					        "Failed to receive frame from "
-					        "decoder: %s\n",
-					        av_err2str(result));
-					return 0;
-				}
-
-				frame_number++;
-
-				// The is the sensitive section
-
-				// Lock this section. Other threads CANNOT
-				// interfere during this section
+			if (is_audio) {
 				pthread_mutex_lock(&alock);
-
-				// Wait until buffer is not full
 				while (aw == ar + CACHE_SIZE) {
+					// puts("abuf full, waiting");
 					pthread_cond_wait(&acond, &alock);
 				}
-
-				// Push a frame into the buffer
 				abuf[(aw++) % CACHE_SIZE] = frame;
-
-				// Signal consumer that it's safe to read
+				// printf("Pushing audio frame %d\n", acount++);
 				pthread_cond_signal(&acond);
-				// Let go of the lock. Critical section is done
 				pthread_mutex_unlock(&alock);
+			} else {
+				pthread_mutex_lock(&vlock);
+				while (vw == vr + CACHE_SIZE) {
+					// puts("vbuf full, waiting");
+					pthread_cond_wait(&vcond, &vlock);
+				}
+				vbuf[(vw++) % CACHE_SIZE] = frame;
+				// printf("Pushing video frame %d\n", vcount++);
+				pthread_cond_signal(&vcond);
+				pthread_mutex_unlock(&vlock);
 			}
 		}
 	}
@@ -152,12 +197,71 @@ void *decode_frames(void *arg) {
 	freeVideoInfo(vi);
 	av_packet_free(&packet);
 
-	// Signal the consumer to keep reading
+	// Signal consumers to keep reading
 	puts("Killing decode thread");
 	pthread_cond_signal(&acond);
+	pthread_cond_signal(&vcond);
 	// Set flag to indicate that video has ended
 	producer_done = 1;
 	return 0;
+}
+
+AVFrame *prevFrame = NULL, *prevRgbFrame = NULL;
+void draw(GtkDrawingArea *drawingArea, cairo_t *cr, int width, int height,
+          gpointer data) {
+	AVFrame *frame = NULL;
+
+	// Lock this section. Other threads CANNOT interfere during this section
+	pthread_mutex_lock(&vlock);
+	// Wait until buffer is not empty (there's actually data to read)
+	while (vr == vw &&
+	       !producer_done) {  // Buffer is empty and producer hasn't stopped
+		puts("[Consumer] Buffer is empty! Waiting...");
+		pthread_cond_wait(&vcond, &vlock);
+	}
+
+	// Retrieve a frame from the buffer, or NULL if video is done and buffer
+	// is empty
+	frame = vr == vw && producer_done ? NULL : vbuf[(vr++) % CACHE_SIZE];
+
+	// Signal producer that it's safe to write to the buffer
+	pthread_cond_signal(&vcond);
+	// Let go of the lock. Critical section is done
+	pthread_mutex_unlock(&vlock);
+
+	// If there is indeed a frame in the queue:
+	if (frame != NULL) {
+		// Convert YUV frame data to RGB so cairo can understand
+		AVFrame *rgbFrame = av_frame_alloc();
+		yuvFrameToRgbFrame(frame, rgbFrame);
+		cairo_surface_t *frameSurface =
+		    cairo_image_surface_create_for_data(
+		        rgbFrame->data[0], CAIRO_FORMAT_ARGB32, rgbFrame->width,
+		        rgbFrame->height, rgbFrame->linesize[0]);
+
+		// Draw frame
+		cairo_set_source_surface(cr, frameSurface, 0, 0);
+		cairo_paint(cr);
+
+		// Free previous frame (cairo_paint still needs current frame
+		// data allocated, so we free the memory for the previously
+		// drawn frame)
+		if (prevFrame != NULL) {
+			av_frame_free(&prevFrame);
+		}
+		if (prevRgbFrame != NULL) {
+			av_frame_free(&prevRgbFrame);
+		}
+
+		// Set the current frame that was drawn as the previous frame
+		// for the next draw iteration
+		prevFrame = frame;
+		prevRgbFrame = rgbFrame;
+	} else {  // If there was no frame in buffer, draw black screen
+		cairo_rectangle(cr, 0, 0, width, height);
+		cairo_set_source_rgb(cr, 0, 0, 0);
+		cairo_fill(cr);
+	}
 }
 
 void state_callback(pa_context *c, void *userdata) {
@@ -270,23 +374,73 @@ void makeDecodeThread(const char *filename) {
 	pthread_create(&tid, NULL, decode_frames, (void *)filename);
 }
 
+void startPulseMainLoop() {
+	if (setupPulse() == -1) {
+		pa_mainloop_free(m);
+		pa_context_unref(pc);
+		puts("Error setting up pulse connection");
+		return;
+	}
+
+	if (pa_mainloop_run(m, NULL)) {
+		fprintf(stderr, "pa_mainloop has quit.\n");
+	}
+}
+
+void makeAudioThread() {
+	pthread_t tid;
+	pthread_create(&tid, NULL, (void *)startPulseMainLoop, NULL);
+}
+void activate(GtkApplication *app, gpointer data) {
+	char *filename = (char *)data;
+
+	// Get video information
+	VideoInfo *vi = getVideoInfo(filename);
+
+	printf("Dimensions are %dx%d, framerate is %d\n", vi->width, vi->height,
+	       vi->framerate);
+
+	GtkWidget *window, *box, *drawingArea;
+
+	window = gtk_application_window_new(app);
+	gtk_window_set_title(GTK_WINDOW(window), "Video player");
+	box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+	drawingArea = gtk_drawing_area_new();
+	gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(drawingArea), draw,
+	                               NULL, NULL);
+	// Resize window to dimensions of the video
+	gtk_widget_set_size_request(drawingArea, vi->width, vi->height);
+
+	// Setup drawing thread (consumer)
+	g_timeout_add(1000 / vi->framerate, (GSourceFunc)gtk_widget_queue_draw,
+	              drawingArea);
+	// Setup decoding thread (producer)
+	makeDecodeThread(filename);
+	makeAudioThread();
+
+	gtk_box_append(GTK_BOX(box), drawingArea);
+	gtk_window_set_child(GTK_WINDOW(window), box);
+	gtk_widget_show(window);
+
+	freeVideoInfo(vi);
+}
+
 int main(int argc, char *argv[]) {
 	if (argc < 2) {
 		puts("Please give an video file");
 		printf("Example: %s file.mp4\n", argv[0]);
 		return 1;
 	}
+	const char *filename = argv[1];
+	GtkApplication *app;
+	int status;
+	app = gtk_application_new("com.jagrajaulakh.final",
+	                          G_APPLICATION_DEFAULT_FLAGS);
 
-	makeDecodeThread(argv[1]);
+	char *newArgv[] = {argv[0]};
+	g_signal_connect(app, "activate", G_CALLBACK(activate),
+	                 (void *)filename);
+	status = g_application_run(G_APPLICATION(app), 1, newArgv);
 
-	if (setupPulse() == -1) {
-		pa_mainloop_free(m);
-		pa_context_unref(pc);
-		puts("Error setting up pulse connection");
-		return 1;
-	}
-
-	if (pa_mainloop_run(m, NULL)) {
-		fprintf(stderr, "pa_mainloop has quit.\n");
-	}
+	return 0;
 }

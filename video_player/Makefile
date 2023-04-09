@@ -1,8 +1,8 @@
 SOURCE_FILES = ./main.c
 OUTPUT=main.out
 
-CFLAGS=-ggdb `pkg-config --cflags libpulse libavformat libavcodec libavutil`
-LIBS=`pkg-config --libs libpulse libavformat libavcodec libavutil` -lm
+CFLAGS=-ggdb `pkg-config --cflags libpulse libavformat libavcodec libavutil libswscale gtk4`
+LIBS=`pkg-config --libs libpulse libavformat libavcodec libavutil libswscale gtk4` -lm
 
 main: $(SOURCE_FILES)
 	mkdir -p bin/ && \
