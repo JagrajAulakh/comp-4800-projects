@@ -416,13 +416,13 @@ void activate(GtkApplication *app, gpointer data) {
 	              drawingArea);
 	// Setup decoding thread (producer)
 	makeDecodeThread(filename);
-	makeAudioThread();
 
 	gtk_box_append(GTK_BOX(box), drawingArea);
 	gtk_window_set_child(GTK_WINDOW(window), box);
-	gtk_widget_show(window);
+	gtk_widget_set_visible(window, true);
 
 	freeVideoInfo(vi);
+	makeAudioThread();
 }
 
 int main(int argc, char *argv[]) {
